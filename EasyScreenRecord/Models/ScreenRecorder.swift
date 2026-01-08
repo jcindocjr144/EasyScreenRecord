@@ -93,9 +93,9 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             let config = SCStreamConfiguration()
             config.width = Int(displaySize.width) * 2
             config.height = Int(displaySize.height) * 2
-            config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+            config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(zoomSettings.frameRate))
             config.queueDepth = 8
-            config.showsCursor = true
+            config.showsCursor = zoomSettings.showCursor
             
             let filter = SCContentFilter(display: display, excludingWindows: [])
             
@@ -261,14 +261,20 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
 
         let writer = try AVAssetWriter(outputURL: fileURL, fileType: .mov)
 
+        // Calculate bitrate based on quality (0.5 = 2x, 0.8 = 4x, 1.0 = 6x of base)
+        let baseBitrate = evenWidth * evenHeight
+        let qualityMultiplier = 2.0 + (zoomSettings.videoQuality * 4.0) // 2x to 6x
+        let bitrate = Int(Double(baseBitrate) * qualityMultiplier)
+        let frameRate = zoomSettings.frameRate
+
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: evenWidth,
             AVVideoHeightKey: evenHeight,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: evenWidth * evenHeight * 4,
-                AVVideoExpectedSourceFrameRateKey: 60,
-                AVVideoMaxKeyFrameIntervalKey: 60
+                AVVideoAverageBitRateKey: bitrate,
+                AVVideoExpectedSourceFrameRateKey: frameRate,
+                AVVideoMaxKeyFrameIntervalKey: frameRate
             ]
         ]
 
@@ -320,6 +326,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
 
         let viewModel = OverlayViewModel()
         viewModel.edgeMargin = zoomSettings.edgeMarginRatio
+        viewModel.showSafeZone = zoomSettings.showSafeZone
         self.overlayViewModel = viewModel
 
         let contentView = NSHostingView(rootView: DynamicRecordingOverlayView(viewModel: viewModel))
@@ -396,6 +403,33 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
     private func updateZoom() {
         let now = Date()
         let settings = zoomSettings
+
+        // If smart zoom is disabled, just maintain current view without zoom changes
+        if !settings.smartZoomEnabled {
+            // Update stream with current (non-zoomed) view
+            if now.timeIntervalSince(lastUpdateTimestamp) > 0.033 {
+                if let stream = stream {
+                    let config = SCStreamConfiguration()
+                    config.sourceRect = CGRect(origin: .zero, size: displaySize)
+                    config.width = Int(displaySize.width) * 2
+                    config.height = Int(displaySize.height) * 2
+                    config.showsCursor = settings.showCursor
+                    stream.updateConfiguration(config) { error in
+                        if let error = error {
+                            print("Failed to update stream configuration: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                lastUpdateTimestamp = now
+            }
+            // Hide overlay when smart zoom is disabled
+            overlayWindow?.alphaValue = 0.0
+            if let screen = NSScreen.main, let viewModel = dimmingViewModel {
+                viewModel.holeRect = CGRect(origin: .zero, size: screen.frame.size)
+            }
+            return
+        }
+
         let typingPosition = AccessibilityUtils.getTypingCursorPosition()
 
         // Calculate default center position (in top-left origin coordinates)
@@ -463,7 +497,8 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         var targetPosition: CGPoint
 
         if shouldZoom {
-            targetScale = settings.zoomScale
+            // Clamp zoom scale to min/max bounds
+            targetScale = max(settings.minZoomScale, min(settings.maxZoomScale, settings.zoomScale))
             // Apply center offset to the locked position
             // Offset moves the zoom center relative to cursor position
             let baseWidth: CGFloat
@@ -551,28 +586,19 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             let nearTopEdge = pos.y < safeTop
             let nearBottomEdge = pos.y > safeBottom
 
-            let isNearEdge = nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge
-
-            // Also check minimum movement threshold to avoid micro-adjustments
-            let distance = hypot(pos.x - lockedTargetPosition.x, pos.y - lockedTargetPosition.y)
-            let exceedsThreshold = distance > settings.movementThreshold
+            let isOutsideSafeZone = nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge
 
             #if DEBUG
-            // Log every 0.5s when near edge or moving
             if now.timeIntervalSince(lastLogTime) > 0.5 {
-                let safeWidth = safeRight - safeLeft
-                let safeHeight = safeBottom - safeTop
-                print("[Edge] cursor=(\(Int(pos.x)),\(Int(pos.y))) | win:\(Int(activeZoomWidth))x\(Int(activeZoomHeight)) margin:\(Int(settings.edgeMarginRatio * 100))% safe:\(Int(safeWidth))x\(Int(safeHeight)) | near=L:\(nearLeftEdge) R:\(nearRightEdge) T:\(nearTopEdge) B:\(nearBottomEdge)")
+                print("[Edge] cursor=(\(Int(pos.x)),\(Int(pos.y))) | safe:(\(Int(safeLeft))-\(Int(safeRight)), \(Int(safeTop))-\(Int(safeBottom))) | outside=\(isOutsideSafeZone)")
                 lastLogTime = now
             }
             #endif
 
-            // Reposition if:
-            // 1. Cursor is near edge of zoom area, OR cursor moved significantly
-            // 2. Enough time has passed since last reposition
-            if (isNearEdge || exceedsThreshold) && timeSinceLastMove > settings.positionHoldDuration {
+            // Reposition when cursor is outside safe zone
+            if isOutsideSafeZone && timeSinceLastMove > settings.positionHoldDuration {
                 #if DEBUG
-                print("[Edge] REPOSITION triggered! isNearEdge=\(isNearEdge) exceedsThreshold=\(exceedsThreshold)")
+                print("[Edge] REPOSITION triggered!")
                 #endif
                 lockedTargetPosition = pos
                 lastPositionChangeTime = now
@@ -591,9 +617,10 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
                 window.alphaValue = (settings.showOverlay && isZoomActive) ? 1.0 : 0.0
             }
 
-            // Update overlay view model with current edge margin
+            // Update overlay view model with current settings
             if let viewModel = self.overlayViewModel {
                 viewModel.edgeMargin = settings.edgeMarginRatio
+                viewModel.showSafeZone = settings.showSafeZone
             }
 
             // Update dimming hole rect
@@ -614,7 +641,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
                 config.sourceRect = currentSourceRect
                 config.width = Int(displaySize.width) * 2
                 config.height = Int(displaySize.height) * 2
-                config.showsCursor = true
+                config.showsCursor = settings.showCursor
                 stream.updateConfiguration(config) { error in
                     if let error = error {
                         print("Failed to update stream configuration: \(error.localizedDescription)")
@@ -689,6 +716,7 @@ extension ScreenRecorder: SCStreamDelegate {
 // MARK: - Overlay View Model
 class OverlayViewModel: ObservableObject {
     @Published var edgeMargin: CGFloat = 0.1
+    @Published var showSafeZone: Bool = true
 }
 
 // MARK: - Dynamic Recording Overlay View
@@ -696,7 +724,7 @@ struct DynamicRecordingOverlayView: View {
     @ObservedObject var viewModel: OverlayViewModel
 
     var body: some View {
-        RecordingOverlayView(scale: 1.0, edgeMargin: viewModel.edgeMargin)
+        RecordingOverlayView(scale: 1.0, edgeMargin: viewModel.edgeMargin, showSafeZone: viewModel.showSafeZone)
     }
 }
 

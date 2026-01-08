@@ -3,21 +3,25 @@ import SwiftUI
 struct RecordingOverlayView: View {
     let scale: CGFloat
     let edgeMargin: CGFloat
+    let showSafeZone: Bool
     @State private var rotation: Double = 0
 
-    init(scale: CGFloat, edgeMargin: CGFloat = 0.1) {
+    init(scale: CGFloat, edgeMargin: CGFloat = 0.1, showSafeZone: Bool = true) {
         self.scale = scale
         self.edgeMargin = edgeMargin
+        self.showSafeZone = showSafeZone
     }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 // Safe zone indicator - calculated from full window size
-                SafeZoneIndicator(
-                    windowSize: geo.size,
-                    margin: edgeMargin
-                )
+                if showSafeZone {
+                    SafeZoneIndicator(
+                        windowSize: geo.size,
+                        margin: edgeMargin
+                    )
+                }
 
                 // High-tech scanner lines (corner brackets)
                 ViewfinderFrame()

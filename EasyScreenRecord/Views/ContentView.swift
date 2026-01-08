@@ -163,126 +163,98 @@ struct ZoomSettingsView: View {
     @ObservedObject var settings: ZoomSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Presets
-            VStack(alignment: .leading, spacing: 6) {
-                Text("PRESETS")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 8) {
-                    PresetButton(title: "Smooth", icon: "tortoise.fill") {
-                        applyPreset(.smooth)
-                    }
-                    PresetButton(title: "Default", icon: "circle.fill") {
-                        applyPreset(.default)
-                    }
-                    PresetButton(title: "Fast", icon: "hare.fill") {
-                        applyPreset(.responsive)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            // Smart Zoom Master Toggle
+            HStack {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .foregroundStyle(.blue)
+                Text("Smart Zoom")
+                    .font(.system(size: 11, weight: .bold))
+                Spacer()
+                Toggle("", isOn: $settings.smartZoomEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
             }
+            .padding(10)
+            .background(Color.blue.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Divider().opacity(0.3)
-
-            // Follow Behavior Section
-            SettingSection(title: "FOLLOW BEHAVIOR", icon: "arrow.triangle.2.circlepath") {
-                VStack(alignment: .leading, spacing: 10) {
-                    // Edge Margin with visual indicator
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Edge Margin")
-                                .font(.system(size: 10, weight: .medium))
-                            Spacer()
-                            Text("\(Int(settings.edgeMarginRatio * 100))%")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.blue)
-                        }
-
-                        // Visual indicator
-                        EdgeMarginIndicator(margin: settings.edgeMarginRatio)
-                            .frame(height: 40)
-
-                        Text("Cursor must reach this edge zone to trigger repositioning")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
-
-                        Stepper(value: $settings.edgeMarginRatio, in: 0.05...0.4, step: 0.05) {
-                            EmptyView()
-                        }
-                        .labelsHidden()
-                    }
-
-                    Divider().opacity(0.2)
-
-                    // Timing
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Zoom Hold")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 4) {
-                                Text(String(format: "%.1fs", settings.zoomHoldDuration))
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.blue)
-                                Stepper("", value: $settings.zoomHoldDuration, in: 0.5...5.0, step: 0.5)
-                                    .labelsHidden()
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Reposition Delay")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 4) {
-                                Text(String(format: "%.1fs", settings.positionHoldDuration))
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.blue)
-                                Stepper("", value: $settings.positionHoldDuration, in: 0.1...2.0, step: 0.1)
-                                    .labelsHidden()
-                            }
-                        }
-                    }
-                }
-            }
-
-            Divider().opacity(0.3)
-
-            // Center Offset Section
-            SettingSection(title: "CENTER OFFSET", icon: "move.3d") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Shift zoom center relative to cursor")
-                        .font(.system(size: 8))
+            if settings.smartZoomEnabled {
+                // Presets
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("PRESETS")
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
-
-                    HStack(spacing: 20) {
-                        VStack(spacing: 4) {
-                            Text("X")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 4) {
-                                Text(String(format: "%+.2f", settings.centerOffsetX))
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.blue)
-                                    .frame(width: 45)
-                                Stepper("", value: $settings.centerOffsetX, in: -0.4...0.4, step: 0.05)
-                                    .labelsHidden()
-                            }
+                    HStack(spacing: 8) {
+                        PresetButton(title: "Smooth", icon: "tortoise.fill") {
+                            applyPreset(.smooth)
                         }
-
-                        VStack(spacing: 4) {
-                            Text("Y")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 4) {
-                                Text(String(format: "%+.2f", settings.centerOffsetY))
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.blue)
-                                    .frame(width: 45)
-                                Stepper("", value: $settings.centerOffsetY, in: -0.4...0.4, step: 0.05)
-                                    .labelsHidden()
-                            }
+                        PresetButton(title: "Default", icon: "circle.fill") {
+                            applyPreset(.default)
                         }
+                        PresetButton(title: "Fast", icon: "hare.fill") {
+                            applyPreset(.responsive)
+                        }
+                    }
+                }
 
+                Divider().opacity(0.3)
+
+                // Zoom Settings Section
+                SettingSection(title: "ZOOM", icon: "plus.magnifyingglass") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SettingRow(label: "Scale", value: String(format: "%.1fx", settings.zoomScale)) {
+                            Stepper("", value: $settings.zoomScale, in: settings.minZoomScale...settings.maxZoomScale, step: 0.5)
+                                .labelsHidden()
+                        }
+                        SettingRow(label: "Min", value: String(format: "%.1fx", settings.minZoomScale)) {
+                            Stepper("", value: $settings.minZoomScale, in: 1.0...3.0, step: 0.5)
+                                .labelsHidden()
+                        }
+                        SettingRow(label: "Max", value: String(format: "%.1fx", settings.maxZoomScale)) {
+                            Stepper("", value: $settings.maxZoomScale, in: 2.0...10.0, step: 0.5)
+                                .labelsHidden()
+                        }
+                    }
+                }
+
+                Divider().opacity(0.3)
+
+                // Follow Behavior Section
+                SettingSection(title: "FOLLOW BEHAVIOR", icon: "arrow.triangle.2.circlepath") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SettingRow(label: "Edge Margin", value: "\(Int(settings.edgeMarginRatio * 100))%") {
+                            Stepper("", value: $settings.edgeMarginRatio, in: 0.05...0.4, step: 0.05)
+                                .labelsHidden()
+                        }
+                        SettingRow(label: "Move Threshold", value: "\(Int(settings.movementThreshold))pt") {
+                            Stepper("", value: $settings.movementThreshold, in: 10...200, step: 10)
+                                .labelsHidden()
+                        }
+                        SettingRow(label: "Zoom Hold", value: String(format: "%.1fs", settings.zoomHoldDuration)) {
+                            Stepper("", value: $settings.zoomHoldDuration, in: 0.5...5.0, step: 0.5)
+                                .labelsHidden()
+                        }
+                        SettingRow(label: "Reposition Delay", value: String(format: "%.1fs", settings.positionHoldDuration)) {
+                            Stepper("", value: $settings.positionHoldDuration, in: 0.1...2.0, step: 0.1)
+                                .labelsHidden()
+                        }
+                    }
+                }
+
+                Divider().opacity(0.3)
+
+                // Center Offset Section
+                SettingSection(title: "CENTER OFFSET", icon: "move.3d") {
+                    HStack(spacing: 12) {
+                        SettingRow(label: "X", value: String(format: "%+.2f", settings.centerOffsetX)) {
+                            Stepper("", value: $settings.centerOffsetX, in: -0.4...0.4, step: 0.05)
+                                .labelsHidden()
+                        }
+                        SettingRow(label: "Y", value: String(format: "%+.2f", settings.centerOffsetY)) {
+                            Stepper("", value: $settings.centerOffsetY, in: -0.4...0.4, step: 0.05)
+                                .labelsHidden()
+                        }
                         Button("Reset") {
                             settings.centerOffsetX = 0
                             settings.centerOffsetY = 0
@@ -292,56 +264,88 @@ struct ZoomSettingsView: View {
                         .controlSize(.small)
                     }
                 }
-            }
 
-            Divider().opacity(0.3)
+                Divider().opacity(0.3)
 
-            // Smoothing Section
-            SettingSection(title: "ANIMATION", icon: "waveform.path") {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Zoom Speed")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        HStack(spacing: 4) {
-                            Text(String(format: "%.2f", settings.scaleSmoothing))
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.blue)
+                // Animation Section
+                SettingSection(title: "ANIMATION", icon: "waveform.path") {
+                    HStack(spacing: 12) {
+                        SettingRow(label: "Zoom Speed", value: String(format: "%.2f", settings.scaleSmoothing)) {
                             Stepper("", value: $settings.scaleSmoothing, in: 0.01...0.2, step: 0.01)
                                 .labelsHidden()
                         }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Move Speed")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        HStack(spacing: 4) {
-                            Text(String(format: "%.2f", settings.positionSmoothing))
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.blue)
+                        SettingRow(label: "Move Speed", value: String(format: "%.2f", settings.positionSmoothing)) {
                             Stepper("", value: $settings.positionSmoothing, in: 0.01...0.2, step: 0.01)
                                 .labelsHidden()
                         }
+                    }
+                }
+
+                Divider().opacity(0.3)
+
+                // Overlay Section
+                SettingSection(title: "OVERLAY", icon: "square.dashed") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Toggle("Corner Brackets", isOn: $settings.showOverlay)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                            Spacer()
+                            Toggle("Safe Zone", isOn: $settings.showSafeZone)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                        }
+                        .font(.system(size: 10, weight: .medium))
+
+                        HStack {
+                            Toggle("Dimming", isOn: $settings.showDimming)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                            if settings.showDimming {
+                                Spacer()
+                                SettingRow(label: "Opacity", value: "\(Int(settings.dimmingOpacity * 100))%") {
+                                    Stepper("", value: $settings.dimmingOpacity, in: 0.1...0.8, step: 0.1)
+                                        .labelsHidden()
+                                }
+                            }
+                        }
+                        .font(.system(size: 10, weight: .medium))
                     }
                 }
             }
 
             Divider().opacity(0.3)
 
-            // Display Options
-            HStack {
-                Toggle("Show Overlay", isOn: $settings.showOverlay)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                Spacer()
-                Toggle("Show Dimming", isOn: $settings.showDimming)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
+            // Recording Section
+            SettingSection(title: "RECORDING", icon: "video.fill") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        SettingRow(label: "Frame Rate", value: "\(settings.frameRate) fps") {
+                            Picker("", selection: $settings.frameRate) {
+                                Text("15").tag(15)
+                                Text("30").tag(30)
+                                Text("60").tag(60)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 100)
+                        }
+                    }
+
+                    HStack {
+                        Toggle("Show Cursor", isOn: $settings.showCursor)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                        Spacer()
+                        SettingRow(label: "Quality", value: "\(Int(settings.videoQuality * 100))%") {
+                            Stepper("", value: $settings.videoQuality, in: 0.5...1.0, step: 0.1)
+                                .labelsHidden()
+                        }
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                }
             }
-            .font(.system(size: 10, weight: .medium))
         }
-        .padding(16)
+        .padding(14)
         .background(Color.black.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
@@ -353,6 +357,25 @@ struct ZoomSettingsView: View {
             settings.edgeMarginRatio = preset.edgeMarginRatio
             settings.zoomHoldDuration = preset.zoomHoldDuration
             settings.positionHoldDuration = preset.positionHoldDuration
+        }
+    }
+}
+
+// MARK: - Setting Row
+struct SettingRow<Content: View>: View {
+    let label: String
+    let value: String
+    @ViewBuilder let control: Content
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(.blue)
+            control
         }
     }
 }
