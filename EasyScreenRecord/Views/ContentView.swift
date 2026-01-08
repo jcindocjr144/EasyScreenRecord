@@ -16,12 +16,20 @@ struct ContentView: View {
                         .font(.system(size: 16, weight: .black, design: .rounded))
                         .kerning(1.2)
                     Spacer()
+                    Button(action: openOutputFolder) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("保存先フォルダを開く")
                     Button(action: { showSettings.toggle() }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 14))
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .help("設定")
                     Circle()
                         .fill(viewModel.isRecording ? Color.red : Color.gray.opacity(0.3))
                         .frame(width: 10, height: 10)
@@ -156,368 +164,186 @@ struct ContentView: View {
         .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow).ignoresSafeArea())
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSettings)
     }
+
+    private func openOutputFolder() {
+        let url = viewModel.recorder.zoomSettings.effectiveOutputDirectory
+        NSWorkspace.shared.open(url)
+    }
 }
 
-// MARK: - Zoom Settings View
+// MARK: - Zoom Settings View (macOS Native Style)
 struct ZoomSettingsView: View {
     @ObservedObject var settings: ZoomSettings
+    @State private var showAdvanced = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Smart Zoom Master Toggle
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Image(systemName: "sparkle.magnifyingglass")
-                        .foregroundStyle(.blue)
-                    Text("Smart Zoom")
-                        .font(.system(size: 11, weight: .bold))
-                    Spacer()
-                    Toggle("", isOn: $settings.smartZoomEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
+        Form {
+            // 一般
+            Section {
+                Toggle("Smart Zoom", isOn: $settings.smartZoomEnabled)
+
+                if settings.smartZoomEnabled {
+                    LabeledContent("ズーム倍率") {
+                        HStack {
+                            Text(String(format: "%.1fx", settings.zoomScale))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            Stepper("", value: $settings.zoomScale, in: 1.5...5.0, step: 0.5)
+                                .labelsHidden()
+                        }
+                    }
+
+                    LabeledContent("プリセット") {
+                        Picker("", selection: Binding(
+                            get: { presetName },
+                            set: { applyPresetByName($0) }
+                        )) {
+                            Text("滑らか").tag("smooth")
+                            Text("標準").tag("default")
+                            Text("高速").tag("responsive")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                    }
                 }
-                Text("テキスト入力時に自動でズームイン。OFFにすると通常録画")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary.opacity(0.8))
+            } header: {
+                Text("一般")
             }
-            .padding(10)
-            .background(Color.blue.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            if settings.smartZoomEnabled {
-                // Presets
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("PRESETS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        PresetButton(title: "Smooth", icon: "tortoise.fill") {
-                            applyPreset(.smooth)
-                        }
-                        PresetButton(title: "Default", icon: "circle.fill") {
-                            applyPreset(.default)
-                        }
-                        PresetButton(title: "Fast", icon: "hare.fill") {
-                            applyPreset(.responsive)
+            // 録画
+            Section {
+                LabeledContent("保存先") {
+                    HStack {
+                        Text(settings.outputDirectory?.lastPathComponent ?? "ムービー")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Button("変更...") {
+                            selectOutputDirectory()
                         }
                     }
                 }
 
-                Divider().opacity(0.3)
-
-                // Zoom Settings Section
-                SettingSection(title: "ZOOM", icon: "plus.magnifyingglass") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        SettingRow(label: "Scale", value: String(format: "%.1fx", settings.zoomScale), description: "ズーム倍率。2.0xで画面の半分のサイズに拡大") {
-                            Stepper("", value: $settings.zoomScale, in: settings.minZoomScale...settings.maxZoomScale, step: 0.5)
-                                .labelsHidden()
-                        }
-                        SettingRow(label: "Min", value: String(format: "%.1fx", settings.minZoomScale), description: "最小ズーム倍率（スライダー下限）") {
-                            Stepper("", value: $settings.minZoomScale, in: 1.0...3.0, step: 0.5)
-                                .labelsHidden()
-                        }
-                        SettingRow(label: "Max", value: String(format: "%.1fx", settings.maxZoomScale), description: "最大ズーム倍率（スライダー上限）") {
-                            Stepper("", value: $settings.maxZoomScale, in: 2.0...10.0, step: 0.5)
-                                .labelsHidden()
-                        }
+                LabeledContent("フレームレート") {
+                    Picker("", selection: $settings.frameRate) {
+                        Text("30 fps").tag(30)
+                        Text("60 fps").tag(60)
                     }
+                    .pickerStyle(.segmented)
+                    .frame(width: 120)
                 }
 
-                Divider().opacity(0.3)
+                Toggle("カーソルを表示", isOn: $settings.showCursor)
+            } header: {
+                Text("録画")
+            }
 
-                // Follow Behavior Section
-                SettingSection(title: "FOLLOW BEHAVIOR", icon: "arrow.triangle.2.circlepath") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        SettingRow(label: "Edge Margin", value: "\(Int(settings.edgeMarginRatio * 100))%", description: "セーフゾーンの幅。この範囲内ではカメラが追従しない") {
-                            Stepper("", value: $settings.edgeMarginRatio, in: 0.05...0.4, step: 0.05)
-                                .labelsHidden()
+            // 高度な設定
+            Section(isExpanded: $showAdvanced) {
+                if settings.smartZoomEnabled {
+                    // 追従
+                    LabeledContent("セーフゾーン") {
+                        HStack {
+                            Text("\(Int(settings.edgeMarginRatio * 100))%")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 36, alignment: .trailing)
+                            Slider(value: $settings.edgeMarginRatio, in: 0.05...0.4, step: 0.05)
+                                .frame(width: 100)
                         }
-                        SettingRow(label: "Zoom Hold", value: String(format: "%.1fs", settings.zoomHoldDuration), description: "入力停止後にズームを維持する時間") {
+                    }
+
+                    LabeledContent("ズーム維持時間") {
+                        HStack {
+                            Text(String(format: "%.1f秒", settings.zoomHoldDuration))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
                             Stepper("", value: $settings.zoomHoldDuration, in: 0.5...5.0, step: 0.5)
                                 .labelsHidden()
                         }
-                        SettingRow(label: "Reposition Delay", value: String(format: "%.1fs", settings.positionHoldDuration), description: "カーソル追従の遅延。大きいと安定、小さいと即座に追従") {
-                            Stepper("", value: $settings.positionHoldDuration, in: 0.1...2.0, step: 0.1)
-                                .labelsHidden()
-                        }
                     }
-                }
 
-                Divider().opacity(0.3)
-
-                // Center Offset Section
-                SettingSection(title: "CENTER OFFSET", icon: "move.3d") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("カーソル位置からのズーム中心のオフセット")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary.opacity(0.7))
-                        HStack(spacing: 12) {
-                            SettingRow(label: "X", value: String(format: "%+.2f", settings.centerOffsetX)) {
-                                Stepper("", value: $settings.centerOffsetX, in: -0.4...0.4, step: 0.05)
-                                    .labelsHidden()
-                            }
-                            SettingRow(label: "Y", value: String(format: "%+.2f", settings.centerOffsetY)) {
-                                Stepper("", value: $settings.centerOffsetY, in: -0.4...0.4, step: 0.05)
-                                    .labelsHidden()
-                            }
-                            Button("Reset") {
-                                settings.centerOffsetX = 0
-                                settings.centerOffsetY = 0
-                            }
-                            .font(.system(size: 9))
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                }
-
-                Divider().opacity(0.3)
-
-                // Animation Section
-                SettingSection(title: "ANIMATION", icon: "waveform.path") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        SettingRow(label: "Zoom Speed", value: String(format: "%.2f", settings.scaleSmoothing), description: "ズームイン/アウトの速度。大きいと速く、小さいと滑らか") {
-                            Stepper("", value: $settings.scaleSmoothing, in: 0.01...0.2, step: 0.01)
-                                .labelsHidden()
-                        }
-                        SettingRow(label: "Move Speed", value: String(format: "%.2f", settings.positionSmoothing), description: "カメラ移動の速度。大きいと速く、小さいと滑らか") {
-                            Stepper("", value: $settings.positionSmoothing, in: 0.01...0.2, step: 0.01)
-                                .labelsHidden()
-                        }
-                    }
-                }
-
-                Divider().opacity(0.3)
-
-                // Overlay Section
-                SettingSection(title: "OVERLAY", icon: "square.dashed") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("録画中の画面に表示するガイド（録画には映らない）")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary.opacity(0.7))
+                    LabeledContent("追従の滑らかさ") {
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Toggle("Corner Brackets", isOn: $settings.showOverlay)
-                                    .toggleStyle(.switch)
-                                    .controlSize(.small)
-                                Text("四隅の赤い枠")
-                                    .font(.system(size: 7))
-                                    .foregroundStyle(.secondary.opacity(0.6))
-                            }
-                            Spacer()
-                            VStack(alignment: .leading, spacing: 2) {
-                                Toggle("Safe Zone", isOn: $settings.showSafeZone)
-                                    .toggleStyle(.switch)
-                                    .controlSize(.small)
-                                Text("緑のセーフゾーン枠")
-                                    .font(.system(size: 7))
-                                    .foregroundStyle(.secondary.opacity(0.6))
-                            }
+                            Text("滑らか")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $settings.positionSmoothing, in: 0.01...0.2, step: 0.01)
+                                .frame(width: 80)
+                            Text("速い")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.system(size: 10, weight: .medium))
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Toggle("Dimming", isOn: $settings.showDimming)
-                                    .toggleStyle(.switch)
-                                    .controlSize(.small)
-                                Text("録画範囲外を暗く")
-                                    .font(.system(size: 7))
-                                    .foregroundStyle(.secondary.opacity(0.6))
-                            }
-                            if settings.showDimming {
-                                Spacer()
-                                SettingRow(label: "Opacity", value: "\(Int(settings.dimmingOpacity * 100))%") {
-                                    Stepper("", value: $settings.dimmingOpacity, in: 0.1...0.8, step: 0.1)
-                                        .labelsHidden()
-                                }
-                            }
-                        }
-                        .font(.system(size: 10, weight: .medium))
                     }
+
+                    // オーバーレイ
+                    Toggle("録画範囲の枠を表示", isOn: $settings.showOverlay)
+                    Toggle("セーフゾーンを表示", isOn: $settings.showSafeZone)
+                    Toggle("範囲外を暗くする", isOn: $settings.showDimming)
                 }
-            }
 
-            Divider().opacity(0.3)
-
-            // Recording Section
-            SettingSection(title: "RECORDING", icon: "video.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    SettingRow(label: "Frame Rate", value: "\(settings.frameRate) fps", description: "録画のフレームレート。高いほど滑らかだがファイルサイズ増加") {
-                        Picker("", selection: $settings.frameRate) {
-                            Text("15").tag(15)
-                            Text("30").tag(30)
-                            Text("60").tag(60)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 100)
-                    }
-
+                LabeledContent("ビデオ品質") {
                     HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Toggle("Show Cursor", isOn: $settings.showCursor)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                            Text("録画にカーソルを含める")
-                                .font(.system(size: 7))
-                                .foregroundStyle(.secondary.opacity(0.6))
-                        }
-                        Spacer()
-                        SettingRow(label: "Quality", value: "\(Int(settings.videoQuality * 100))%", description: "ビットレート") {
-                            Stepper("", value: $settings.videoQuality, in: 0.5...1.0, step: 0.1)
-                                .labelsHidden()
-                        }
+                        Text("\(Int(settings.videoQuality * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, alignment: .trailing)
+                        Slider(value: $settings.videoQuality, in: 0.5...1.0, step: 0.1)
+                            .frame(width: 100)
                     }
-                    .font(.system(size: 10, weight: .medium))
                 }
+
+                Button("すべての設定をリセット") {
+                    settings.resetToDefaults()
+                }
+                .foregroundStyle(.red)
+            } header: {
+                Text("詳細")
             }
         }
-        .padding(14)
-        .background(Color.black.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .frame(maxHeight: 400)
+    }
+
+    private var presetName: String {
+        if settings.positionSmoothing < 0.06 { return "smooth" }
+        if settings.positionSmoothing > 0.12 { return "responsive" }
+        return "default"
+    }
+
+    private func applyPresetByName(_ name: String) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            switch name {
+            case "smooth":
+                applyPreset(.smooth)
+            case "responsive":
+                applyPreset(.responsive)
+            default:
+                applyPreset(.default)
+            }
+        }
     }
 
     private func applyPreset(_ preset: ZoomSettings) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            settings.scaleSmoothing = preset.scaleSmoothing
-            settings.positionSmoothing = preset.positionSmoothing
-            settings.edgeMarginRatio = preset.edgeMarginRatio
-            settings.zoomHoldDuration = preset.zoomHoldDuration
-            settings.positionHoldDuration = preset.positionHoldDuration
-        }
+        settings.scaleSmoothing = preset.scaleSmoothing
+        settings.positionSmoothing = preset.positionSmoothing
+        settings.edgeMarginRatio = preset.edgeMarginRatio
+        settings.zoomHoldDuration = preset.zoomHoldDuration
+        settings.positionHoldDuration = preset.positionHoldDuration
     }
-}
 
-// MARK: - Setting Row
-struct SettingRow<Content: View>: View {
-    let label: String
-    let value: String
-    var description: String? = nil
-    @ViewBuilder let control: Content
+    private func selectOutputDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "選択"
+        panel.message = "録画ファイルの保存先を選択してください"
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Text(label)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.blue)
-                control
-            }
-            if let desc = description {
-                Text(desc)
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary.opacity(0.7))
-                    .lineLimit(2)
-            }
+        if panel.runModal() == .OK {
+            settings.outputDirectory = panel.url
         }
-    }
-}
-
-// MARK: - Setting Section
-struct SettingSection<Content: View>: View {
-    let title: String
-    let icon: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
-            content
-        }
-    }
-}
-
-// MARK: - Edge Margin Visual Indicator
-struct EdgeMarginIndicator: View {
-    let margin: CGFloat
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                // Outer frame (full area)
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
-
-                // Edge margin zones (red areas)
-                let marginWidth = geo.size.width * margin
-                let marginHeight = geo.size.height * margin
-
-                // Left edge
-                Rectangle()
-                    .fill(Color.red.opacity(0.3))
-                    .frame(width: marginWidth)
-                    .position(x: marginWidth / 2, y: geo.size.height / 2)
-
-                // Right edge
-                Rectangle()
-                    .fill(Color.red.opacity(0.3))
-                    .frame(width: marginWidth)
-                    .position(x: geo.size.width - marginWidth / 2, y: geo.size.height / 2)
-
-                // Top edge
-                Rectangle()
-                    .fill(Color.red.opacity(0.3))
-                    .frame(width: geo.size.width - marginWidth * 2, height: marginHeight)
-                    .position(x: geo.size.width / 2, y: marginHeight / 2)
-
-                // Bottom edge
-                Rectangle()
-                    .fill(Color.red.opacity(0.3))
-                    .frame(width: geo.size.width - marginWidth * 2, height: marginHeight)
-                    .position(x: geo.size.width / 2, y: geo.size.height - marginHeight / 2)
-
-                // Center safe zone (green)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.green.opacity(0.2))
-                    .frame(
-                        width: geo.size.width - marginWidth * 2,
-                        height: geo.size.height - marginHeight * 2
-                    )
-
-                // Cursor icon in center
-                Image(systemName: "cursorarrow")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.green)
-
-                // Labels
-                Text("Safe Zone")
-                    .font(.system(size: 7, weight: .medium))
-                    .foregroundStyle(.green.opacity(0.8))
-                    .offset(y: 12)
-            }
-        }
-    }
-}
-
-struct PresetButton: View {
-    let title: String
-    let icon: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 8))
-                Text(title)
-                    .font(.system(size: 8, weight: .bold))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.white.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
     }
 }
 

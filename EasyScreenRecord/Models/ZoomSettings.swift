@@ -30,7 +30,8 @@ class ZoomSettings: ObservableObject {
     @Published var positionHoldDuration: TimeInterval = 0.3
 
     /// Center point offset ratio (-0.5 to 0.5)
-    @Published var centerOffsetX: CGFloat = 0.0
+    /// Positive X = cursor appears on left (good for typing)
+    @Published var centerOffsetX: CGFloat = 0.25
     @Published var centerOffsetY: CGFloat = 0.0
 
     // MARK: - Overlay Settings
@@ -62,9 +63,45 @@ class ZoomSettings: ObservableObject {
     /// Output video quality (0.0 = lowest, 1.0 = highest)
     @Published var videoQuality: CGFloat = 0.8
 
+    /// Output directory for recordings (nil = system temp directory)
+    @Published var outputDirectory: URL? = nil
+
+    /// Get the actual output directory (defaults to Movies folder)
+    var effectiveOutputDirectory: URL {
+        if let dir = outputDirectory {
+            return dir
+        }
+        // Default to Movies folder
+        return FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+    }
+
     // MARK: - Smart Zoom Toggle
     /// Enable/disable smart zoom entirely
     @Published var smartZoomEnabled: Bool = true
+
+    // MARK: - Reset
+    func resetToDefaults() {
+        zoomScale = 2.0
+        minZoomScale = 1.5
+        maxZoomScale = 5.0
+        scaleSmoothing = 0.05
+        positionSmoothing = 0.08
+        edgeMarginRatio = 0.1
+        zoomHoldDuration = 1.5
+        positionHoldDuration = 0.3
+        centerOffsetX = 0.25
+        centerOffsetY = 0.0
+        showOverlay = true
+        showSafeZone = true
+        showDimming = true
+        dimmingOpacity = 0.3
+        frameRate = 30
+        showCursor = true
+        videoQuality = 0.8
+        smartZoomEnabled = true
+        // outputDirectory is not reset (user preference)
+    }
 
     // Presets
     static let smooth: ZoomSettings = {

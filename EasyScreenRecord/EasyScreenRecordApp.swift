@@ -135,6 +135,14 @@ struct MenuBarContentView: View {
 
         Divider()
 
+        // Open Output Folder
+        Button {
+            let url = viewModel.recorder.zoomSettings.effectiveOutputDirectory
+            NSWorkspace.shared.open(url)
+        } label: {
+            Label("Open Output Folder", systemImage: "folder")
+        }
+
         // Settings
         Button {
             NSApp.activate(ignoringOtherApps: true)

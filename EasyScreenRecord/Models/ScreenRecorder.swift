@@ -79,26 +79,58 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
     func startCapture() async {
         guard case .idle = state else { return }
         state = .starting
-        
+
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            // Setup overlay windows FIRST and show them (before getting content, so we can exclude them)
+            setupOverlayWindow()
+            setupDimmingWindow()
+
+            // Show windows immediately so they appear in SCShareableContent
+            overlayWindow?.orderFrontRegardless()
+            dimmingWindow?.orderFrontRegardless()
+
+            // Delay to ensure windows are registered in the window server
+            try await Task.sleep(nanoseconds: 200_000_000) // 0.2 second
+
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             self.availableContent = content
-            
+
             guard let display = content.displays.first else {
                 throw NSError(domain: "ScreenRecorder", code: -1, userInfo: [NSLocalizedDescriptionKey: "No display found"])
             }
-            
+
             displaySize = CGSize(width: CGFloat(display.width), height: CGFloat(display.height))
-            
+
             let config = SCStreamConfiguration()
             config.width = Int(displaySize.width) * 2
             config.height = Int(displaySize.height) * 2
             config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(zoomSettings.frameRate))
             config.queueDepth = 8
             config.showsCursor = zoomSettings.showCursor
-            
-            let filter = SCContentFilter(display: display, excludingWindows: [])
-            
+
+            // Exclude ALL windows from our own app (overlay, dimming, settings, etc.)
+            let myBundleID = Bundle.main.bundleIdentifier ?? ""
+            let myPID = ProcessInfo.processInfo.processIdentifier
+
+            var windowsToExclude: [SCWindow] = []
+            for scWindow in content.windows {
+                // Exclude by matching our process ID or bundle identifier
+                if let owningApp = scWindow.owningApplication {
+                    if owningApp.processID == myPID || owningApp.bundleIdentifier == myBundleID {
+                        windowsToExclude.append(scWindow)
+                    }
+                }
+            }
+
+            #if DEBUG
+            print("[Capture] Excluding \(windowsToExclude.count) windows from our app (PID: \(myPID), Bundle: \(myBundleID))")
+            for w in windowsToExclude {
+                print("  - Window: \(w.windowID) - \(w.title ?? "untitled")")
+            }
+            #endif
+
+            let filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
+
             // Reset Session State
             isWritingSessionStarted = false
             isStopping = false
@@ -127,33 +159,32 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
 
             // Setup Asset Writer
             try setupAssetWriter(width: config.width, height: config.height)
-            
+
             // Setup Stream
             let newStream = SCStream(filter: filter, configuration: config, delegate: self)
-            // Use local var to avoid self.stream race access in early init? No, safer to assign after addStreamOutput
             try newStream.addStreamOutput(self, type: .screen, sampleHandlerQueue: writingQueue)
             self.stream = newStream
-            
+
             try await newStream.startCapture()
-            
-            // Setup Windows
-            setupOverlayWindow() // Zoom indicator
-            setupDimmingWindow() // Grey out background
 
             // Initialize dimming hole rect based on baseRegion or full screen
-            if let viewModel = dimmingViewModel, let screen = NSScreen.main {
-                let screenHeight = screen.frame.height
+            let targetScreen = getTargetScreen()
+            if let viewModel = dimmingViewModel {
+                let screenHeight = targetScreen.frame.height
+                let screenOrigin = targetScreen.frame.origin
                 if let region = baseRegion {
-                    // baseRegion is in NSWindow coordinates (bottom-left origin)
-                    // Convert to top-left origin for SwiftUI
-                    let holeY = screenHeight - region.origin.y - region.height
-                    viewModel.holeRect = CGRect(x: region.origin.x, y: holeY, width: region.width, height: region.height)
+                    // baseRegion is in global NSWindow coordinates (bottom-left origin)
+                    // Convert to window-local coordinates (top-left origin for SwiftUI)
+                    let localX = region.origin.x - screenOrigin.x
+                    let localY = screenHeight - (region.origin.y - screenOrigin.y) - region.height
+                    viewModel.holeRect = CGRect(x: localX, y: localY, width: region.width, height: region.height)
                 } else {
-                    // Full screen - no dimming
-                    viewModel.holeRect = CGRect(origin: .zero, size: screen.frame.size)
+                    // Full screen - no dimming (hole covers entire window)
+                    viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
                 }
             }
 
+            // Windows already shown at start, just ensure they're on top
             self.overlayWindow?.orderFrontRegardless()
             self.dimmingWindow?.orderFrontRegardless()
 
@@ -257,7 +288,11 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         let evenWidth = (width >> 1) << 1
         let evenHeight = (height >> 1) << 1
 
-        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("Record-\(UUID().uuidString).mov")
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = dateFormatter.string(from: Date())
+        let fileName = "Recording_\(timestamp).mov"
+        let fileURL = zoomSettings.effectiveOutputDirectory.appendingPathComponent(fileName)
 
         let writer = try AVAssetWriter(outputURL: fileURL, fileType: .mov)
 
@@ -334,8 +369,22 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         self.overlayWindow = window
     }
     
+    /// Get the screen containing the recording region
+    private func getTargetScreen() -> NSScreen {
+        // If we have a baseRegion, find the screen that contains it
+        if let region = baseRegion {
+            let regionCenter = CGPoint(x: region.midX, y: region.midY)
+            for screen in NSScreen.screens {
+                if screen.frame.contains(regionCenter) {
+                    return screen
+                }
+            }
+        }
+        return NSScreen.main ?? NSScreen.screens.first!
+    }
+
     private func setupDimmingWindow() {
-        guard let screen = NSScreen.main else { return }
+        let screen = getTargetScreen()
 
         // Create a full screen window with a dynamic 'hole'
         let window = NSWindow(
@@ -355,7 +404,9 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         self.dimmingViewModel = viewModel
 
         // Initialize hole rect to full screen (no dimming initially)
+        // Use local coordinates (relative to window/screen origin)
         viewModel.holeRect = CGRect(origin: .zero, size: screen.frame.size)
+        viewModel.screenOrigin = screen.frame.origin
 
         let contentView = NSHostingView(rootView: DimmingView(viewModel: viewModel))
         window.contentView = contentView
@@ -424,8 +475,9 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             }
             // Hide overlay when smart zoom is disabled
             overlayWindow?.alphaValue = 0.0
-            if let screen = NSScreen.main, let viewModel = dimmingViewModel {
-                viewModel.holeRect = CGRect(origin: .zero, size: screen.frame.size)
+            let targetScreen = getTargetScreen()
+            if let viewModel = dimmingViewModel {
+                viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
             }
             return
         }
@@ -606,31 +658,37 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         }
 
         // Update Overlay Window and Dimming
-        if let screen = NSScreen.main {
-            let screenHeight = screen.frame.height
-            // Convert from top-left to bottom-left origin for window positioning
-            let windowY = screenHeight - sourceY - activeZoomHeight
+        let targetScreen = getTargetScreen()
+        let screenHeight = targetScreen.frame.height
+        let screenOrigin = targetScreen.frame.origin
 
-            // Update overlay window
-            if let window = self.overlayWindow {
-                window.setFrame(NSRect(x: sourceX, y: windowY, width: activeZoomWidth, height: activeZoomHeight), display: true)
-                window.alphaValue = (settings.showOverlay && isZoomActive) ? 1.0 : 0.0
-            }
+        // Convert from top-left to bottom-left origin for window positioning (global coords)
+        // Note: For main screen, origin.y is 0. For other screens, it varies.
+        let windowY = screenOrigin.y + screenHeight - sourceY - activeZoomHeight
 
-            // Update overlay view model with current settings
-            if let viewModel = self.overlayViewModel {
-                viewModel.edgeMargin = settings.edgeMarginRatio
-                viewModel.showSafeZone = settings.showSafeZone
-            }
+        // Update overlay window (uses global coordinates)
+        if let window = self.overlayWindow {
+            window.setFrame(NSRect(x: sourceX, y: windowY, width: activeZoomWidth, height: activeZoomHeight), display: true)
+            window.alphaValue = (settings.showOverlay && isZoomActive) ? 1.0 : 0.0
+        }
 
-            // Update dimming hole rect
-            if let viewModel = self.dimmingViewModel {
-                if settings.showDimming {
-                    viewModel.holeRect = CGRect(x: sourceX, y: sourceY, width: activeZoomWidth, height: activeZoomHeight)
-                } else {
-                    // No dimming - hole covers entire screen
-                    viewModel.holeRect = CGRect(origin: .zero, size: screen.frame.size)
-                }
+        // Update overlay view model with current settings
+        if let viewModel = self.overlayViewModel {
+            viewModel.edgeMargin = settings.edgeMarginRatio
+            viewModel.showSafeZone = settings.showSafeZone
+        }
+
+        // Update dimming hole rect (needs window-local coordinates)
+        if let viewModel = self.dimmingViewModel {
+            if settings.showDimming {
+                // Convert global coords to window-local coords
+                // sourceX, sourceY are in top-left origin global coords
+                let localX = sourceX - screenOrigin.x
+                let localY = sourceY - screenOrigin.y
+                viewModel.holeRect = CGRect(x: localX, y: localY, width: activeZoomWidth, height: activeZoomHeight)
+            } else {
+                // No dimming - hole covers entire screen
+                viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
             }
         }
 
@@ -731,6 +789,7 @@ struct DynamicRecordingOverlayView: View {
 // MARK: - Dimming View Model
 class DimmingViewModel: ObservableObject {
     @Published var holeRect: CGRect = .zero
+    var screenOrigin: CGPoint = .zero // For coordinate conversion
 }
 
 // MARK: - Dimming View
