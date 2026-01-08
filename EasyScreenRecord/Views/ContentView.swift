@@ -165,15 +165,20 @@ struct ZoomSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Smart Zoom Master Toggle
-            HStack {
-                Image(systemName: "sparkle.magnifyingglass")
-                    .foregroundStyle(.blue)
-                Text("Smart Zoom")
-                    .font(.system(size: 11, weight: .bold))
-                Spacer()
-                Toggle("", isOn: $settings.smartZoomEnabled)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "sparkle.magnifyingglass")
+                        .foregroundStyle(.blue)
+                    Text("Smart Zoom")
+                        .font(.system(size: 11, weight: .bold))
+                    Spacer()
+                    Toggle("", isOn: $settings.smartZoomEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                Text("テキスト入力時に自動でズームイン。OFFにすると通常録画")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary.opacity(0.8))
             }
             .padding(10)
             .background(Color.blue.opacity(0.1))
@@ -202,16 +207,16 @@ struct ZoomSettingsView: View {
 
                 // Zoom Settings Section
                 SettingSection(title: "ZOOM", icon: "plus.magnifyingglass") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        SettingRow(label: "Scale", value: String(format: "%.1fx", settings.zoomScale)) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingRow(label: "Scale", value: String(format: "%.1fx", settings.zoomScale), description: "ズーム倍率。2.0xで画面の半分のサイズに拡大") {
                             Stepper("", value: $settings.zoomScale, in: settings.minZoomScale...settings.maxZoomScale, step: 0.5)
                                 .labelsHidden()
                         }
-                        SettingRow(label: "Min", value: String(format: "%.1fx", settings.minZoomScale)) {
+                        SettingRow(label: "Min", value: String(format: "%.1fx", settings.minZoomScale), description: "最小ズーム倍率（スライダー下限）") {
                             Stepper("", value: $settings.minZoomScale, in: 1.0...3.0, step: 0.5)
                                 .labelsHidden()
                         }
-                        SettingRow(label: "Max", value: String(format: "%.1fx", settings.maxZoomScale)) {
+                        SettingRow(label: "Max", value: String(format: "%.1fx", settings.maxZoomScale), description: "最大ズーム倍率（スライダー上限）") {
                             Stepper("", value: $settings.maxZoomScale, in: 2.0...10.0, step: 0.5)
                                 .labelsHidden()
                         }
@@ -222,20 +227,16 @@ struct ZoomSettingsView: View {
 
                 // Follow Behavior Section
                 SettingSection(title: "FOLLOW BEHAVIOR", icon: "arrow.triangle.2.circlepath") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        SettingRow(label: "Edge Margin", value: "\(Int(settings.edgeMarginRatio * 100))%") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingRow(label: "Edge Margin", value: "\(Int(settings.edgeMarginRatio * 100))%", description: "セーフゾーンの幅。この範囲内ではカメラが追従しない") {
                             Stepper("", value: $settings.edgeMarginRatio, in: 0.05...0.4, step: 0.05)
                                 .labelsHidden()
                         }
-                        SettingRow(label: "Move Threshold", value: "\(Int(settings.movementThreshold))pt") {
-                            Stepper("", value: $settings.movementThreshold, in: 10...200, step: 10)
-                                .labelsHidden()
-                        }
-                        SettingRow(label: "Zoom Hold", value: String(format: "%.1fs", settings.zoomHoldDuration)) {
+                        SettingRow(label: "Zoom Hold", value: String(format: "%.1fs", settings.zoomHoldDuration), description: "入力停止後にズームを維持する時間") {
                             Stepper("", value: $settings.zoomHoldDuration, in: 0.5...5.0, step: 0.5)
                                 .labelsHidden()
                         }
-                        SettingRow(label: "Reposition Delay", value: String(format: "%.1fs", settings.positionHoldDuration)) {
+                        SettingRow(label: "Reposition Delay", value: String(format: "%.1fs", settings.positionHoldDuration), description: "カーソル追従の遅延。大きいと安定、小さいと即座に追従") {
                             Stepper("", value: $settings.positionHoldDuration, in: 0.1...2.0, step: 0.1)
                                 .labelsHidden()
                         }
@@ -246,22 +247,27 @@ struct ZoomSettingsView: View {
 
                 // Center Offset Section
                 SettingSection(title: "CENTER OFFSET", icon: "move.3d") {
-                    HStack(spacing: 12) {
-                        SettingRow(label: "X", value: String(format: "%+.2f", settings.centerOffsetX)) {
-                            Stepper("", value: $settings.centerOffsetX, in: -0.4...0.4, step: 0.05)
-                                .labelsHidden()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("カーソル位置からのズーム中心のオフセット")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary.opacity(0.7))
+                        HStack(spacing: 12) {
+                            SettingRow(label: "X", value: String(format: "%+.2f", settings.centerOffsetX)) {
+                                Stepper("", value: $settings.centerOffsetX, in: -0.4...0.4, step: 0.05)
+                                    .labelsHidden()
+                            }
+                            SettingRow(label: "Y", value: String(format: "%+.2f", settings.centerOffsetY)) {
+                                Stepper("", value: $settings.centerOffsetY, in: -0.4...0.4, step: 0.05)
+                                    .labelsHidden()
+                            }
+                            Button("Reset") {
+                                settings.centerOffsetX = 0
+                                settings.centerOffsetY = 0
+                            }
+                            .font(.system(size: 9))
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
-                        SettingRow(label: "Y", value: String(format: "%+.2f", settings.centerOffsetY)) {
-                            Stepper("", value: $settings.centerOffsetY, in: -0.4...0.4, step: 0.05)
-                                .labelsHidden()
-                        }
-                        Button("Reset") {
-                            settings.centerOffsetX = 0
-                            settings.centerOffsetY = 0
-                        }
-                        .font(.system(size: 9))
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
                     }
                 }
 
@@ -269,12 +275,12 @@ struct ZoomSettingsView: View {
 
                 // Animation Section
                 SettingSection(title: "ANIMATION", icon: "waveform.path") {
-                    HStack(spacing: 12) {
-                        SettingRow(label: "Zoom Speed", value: String(format: "%.2f", settings.scaleSmoothing)) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingRow(label: "Zoom Speed", value: String(format: "%.2f", settings.scaleSmoothing), description: "ズームイン/アウトの速度。大きいと速く、小さいと滑らか") {
                             Stepper("", value: $settings.scaleSmoothing, in: 0.01...0.2, step: 0.01)
                                 .labelsHidden()
                         }
-                        SettingRow(label: "Move Speed", value: String(format: "%.2f", settings.positionSmoothing)) {
+                        SettingRow(label: "Move Speed", value: String(format: "%.2f", settings.positionSmoothing), description: "カメラ移動の速度。大きいと速く、小さいと滑らか") {
                             Stepper("", value: $settings.positionSmoothing, in: 0.01...0.2, step: 0.01)
                                 .labelsHidden()
                         }
@@ -286,21 +292,39 @@ struct ZoomSettingsView: View {
                 // Overlay Section
                 SettingSection(title: "OVERLAY", icon: "square.dashed") {
                     VStack(alignment: .leading, spacing: 8) {
+                        Text("録画中の画面に表示するガイド（録画には映らない）")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary.opacity(0.7))
                         HStack {
-                            Toggle("Corner Brackets", isOn: $settings.showOverlay)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Toggle("Corner Brackets", isOn: $settings.showOverlay)
+                                    .toggleStyle(.switch)
+                                    .controlSize(.small)
+                                Text("四隅の赤い枠")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.secondary.opacity(0.6))
+                            }
                             Spacer()
-                            Toggle("Safe Zone", isOn: $settings.showSafeZone)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Toggle("Safe Zone", isOn: $settings.showSafeZone)
+                                    .toggleStyle(.switch)
+                                    .controlSize(.small)
+                                Text("緑のセーフゾーン枠")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.secondary.opacity(0.6))
+                            }
                         }
                         .font(.system(size: 10, weight: .medium))
 
                         HStack {
-                            Toggle("Dimming", isOn: $settings.showDimming)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Toggle("Dimming", isOn: $settings.showDimming)
+                                    .toggleStyle(.switch)
+                                    .controlSize(.small)
+                                Text("録画範囲外を暗く")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.secondary.opacity(0.6))
+                            }
                             if settings.showDimming {
                                 Spacer()
                                 SettingRow(label: "Opacity", value: "\(Int(settings.dimmingOpacity * 100))%") {
@@ -318,25 +342,28 @@ struct ZoomSettingsView: View {
 
             // Recording Section
             SettingSection(title: "RECORDING", icon: "video.fill") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        SettingRow(label: "Frame Rate", value: "\(settings.frameRate) fps") {
-                            Picker("", selection: $settings.frameRate) {
-                                Text("15").tag(15)
-                                Text("30").tag(30)
-                                Text("60").tag(60)
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 100)
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingRow(label: "Frame Rate", value: "\(settings.frameRate) fps", description: "録画のフレームレート。高いほど滑らかだがファイルサイズ増加") {
+                        Picker("", selection: $settings.frameRate) {
+                            Text("15").tag(15)
+                            Text("30").tag(30)
+                            Text("60").tag(60)
                         }
+                        .pickerStyle(.segmented)
+                        .frame(width: 100)
                     }
 
                     HStack {
-                        Toggle("Show Cursor", isOn: $settings.showCursor)
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Toggle("Show Cursor", isOn: $settings.showCursor)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                            Text("録画にカーソルを含める")
+                                .font(.system(size: 7))
+                                .foregroundStyle(.secondary.opacity(0.6))
+                        }
                         Spacer()
-                        SettingRow(label: "Quality", value: "\(Int(settings.videoQuality * 100))%") {
+                        SettingRow(label: "Quality", value: "\(Int(settings.videoQuality * 100))%", description: "ビットレート") {
                             Stepper("", value: $settings.videoQuality, in: 0.5...1.0, step: 0.1)
                                 .labelsHidden()
                         }
@@ -365,17 +392,26 @@ struct ZoomSettingsView: View {
 struct SettingRow<Content: View>: View {
     let label: String
     let value: String
+    var description: String? = nil
     @ViewBuilder let control: Content
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.blue)
-            control
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.blue)
+                control
+            }
+            if let desc = description {
+                Text(desc)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .lineLimit(2)
+            }
         }
     }
 }

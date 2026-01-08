@@ -20,9 +20,6 @@ class ZoomSettings: ObservableObject {
     @Published var positionSmoothing: CGFloat = 0.08
 
     // MARK: - Follow Behavior
-    /// Minimum cursor movement (in points) required to trigger position update
-    @Published var movementThreshold: CGFloat = 50.0
-
     /// Edge margin ratio (0.0-0.5) - cursor must be within this margin from edge to trigger reposition
     @Published var edgeMarginRatio: CGFloat = 0.1
 
@@ -74,7 +71,6 @@ class ZoomSettings: ObservableObject {
         let settings = ZoomSettings()
         settings.scaleSmoothing = 0.03
         settings.positionSmoothing = 0.05
-        settings.movementThreshold = 80.0
         settings.edgeMarginRatio = 0.15
         settings.zoomHoldDuration = 2.5
         settings.positionHoldDuration = 0.8
@@ -85,7 +81,6 @@ class ZoomSettings: ObservableObject {
         let settings = ZoomSettings()
         settings.scaleSmoothing = 0.1
         settings.positionSmoothing = 0.15
-        settings.movementThreshold = 30.0
         settings.edgeMarginRatio = 0.08
         settings.zoomHoldDuration = 1.0
         settings.positionHoldDuration = 0.2
@@ -94,7 +89,6 @@ class ZoomSettings: ObservableObject {
 
     static let `default`: ZoomSettings = {
         let settings = ZoomSettings()
-        settings.movementThreshold = 50.0
         settings.edgeMarginRatio = 0.1
         settings.positionHoldDuration = 0.5
         return settings
