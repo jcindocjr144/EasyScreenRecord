@@ -455,54 +455,8 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             isZoomActive = false
         }
 
-        // Handle position updates based on edge margin
-        // Only reposition when cursor approaches the edge of the current zoom area
-        if let pos = detectedPosition, isZoomActive {
-            let timeSinceLastMove = now.timeIntervalSince(lastPositionChangeTime)
-
-            // Calculate current zoom area dimensions
-            let baseWidth: CGFloat
-            let baseHeight: CGFloat
-            if let region = baseRegion {
-                baseWidth = region.width
-                baseHeight = region.height
-            } else {
-                baseWidth = displaySize.width
-                baseHeight = displaySize.height
-            }
-            let zoomWidth = baseWidth / settings.zoomScale
-            let zoomHeight = baseHeight / settings.zoomScale
-
-            // Calculate current zoom area bounds (centered on lockedTargetPosition)
-            let currentZoomLeft = lockedTargetPosition.x - zoomWidth / 2
-            let currentZoomRight = lockedTargetPosition.x + zoomWidth / 2
-            let currentZoomTop = lockedTargetPosition.y - zoomHeight / 2
-            let currentZoomBottom = lockedTargetPosition.y + zoomHeight / 2
-
-            // Calculate margin in points
-            let marginX = zoomWidth * settings.edgeMarginRatio
-            let marginY = zoomHeight * settings.edgeMarginRatio
-
-            // Check if cursor is within the edge margin (about to go out of view)
-            let nearLeftEdge = pos.x < currentZoomLeft + marginX
-            let nearRightEdge = pos.x > currentZoomRight - marginX
-            let nearTopEdge = pos.y < currentZoomTop + marginY
-            let nearBottomEdge = pos.y > currentZoomBottom - marginY
-
-            let isNearEdge = nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge
-
-            // Also check minimum movement threshold to avoid micro-adjustments
-            let distance = hypot(pos.x - lockedTargetPosition.x, pos.y - lockedTargetPosition.y)
-            let exceedsThreshold = distance > settings.movementThreshold
-
-            // Reposition if:
-            // 1. Cursor is near edge of zoom area, OR cursor moved significantly
-            // 2. Enough time has passed since last reposition
-            if (isNearEdge || exceedsThreshold) && timeSinceLastMove > settings.positionHoldDuration {
-                lockedTargetPosition = pos
-                lastPositionChangeTime = now
-            }
-        }
+        // Store detected position for edge margin check after smoothing
+        let edgeCheckPosition = detectedPosition
 
         // Determine target scale and position
         let targetScale: CGFloat
@@ -539,18 +493,6 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             isTypingDetected = false
         }
 
-        // Debug log (throttled)
-        #if DEBUG
-        if now.timeIntervalSince(lastLogTime) > 1.0 {
-            if shouldZoom {
-                print("[Zoom] Active at: \(lockedTargetPosition), scale: \(currentSmoothScale), hold: \(timeSinceLastTyping)s")
-            } else {
-                print("[Zoom] Inactive, scale: \(currentSmoothScale)")
-            }
-            lastLogTime = now
-        }
-        #endif
-
         // Smooth interpolation with configurable smoothing
         currentSmoothScale += (targetScale - currentSmoothScale) * settings.scaleSmoothing
         lastTargetPosition.x += (targetPosition.x - lastTargetPosition.x) * settings.positionSmoothing
@@ -581,6 +523,61 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         // SCStreamConfiguration.sourceRect uses top-left origin (same as Accessibility)
         let newSourceRect = CGRect(x: sourceX, y: sourceY, width: activeZoomWidth, height: activeZoomHeight)
         currentSourceRect = newSourceRect
+
+        // Handle position updates based on edge margin
+        // Now using the ACTUAL displayed sourceRect (after smoothing and clamping)
+        if let pos = edgeCheckPosition, isZoomActive {
+            let timeSinceLastMove = now.timeIntervalSince(lastPositionChangeTime)
+
+            // Use the actual displayed zoom area (sourceRect)
+            let currentZoomLeft = sourceX
+            let currentZoomRight = sourceX + activeZoomWidth
+            let currentZoomTop = sourceY
+            let currentZoomBottom = sourceY + activeZoomHeight
+
+            // Calculate margin in points
+            let marginX = activeZoomWidth * settings.edgeMarginRatio
+            let marginY = activeZoomHeight * settings.edgeMarginRatio
+
+            // Safe zone boundaries (inside the margin)
+            let safeLeft = currentZoomLeft + marginX
+            let safeRight = currentZoomRight - marginX
+            let safeTop = currentZoomTop + marginY
+            let safeBottom = currentZoomBottom - marginY
+
+            // Check if cursor is OUTSIDE the safe zone (in edge margin)
+            let nearLeftEdge = pos.x < safeLeft
+            let nearRightEdge = pos.x > safeRight
+            let nearTopEdge = pos.y < safeTop
+            let nearBottomEdge = pos.y > safeBottom
+
+            let isNearEdge = nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge
+
+            // Also check minimum movement threshold to avoid micro-adjustments
+            let distance = hypot(pos.x - lockedTargetPosition.x, pos.y - lockedTargetPosition.y)
+            let exceedsThreshold = distance > settings.movementThreshold
+
+            #if DEBUG
+            // Log every 0.5s when near edge or moving
+            if now.timeIntervalSince(lastLogTime) > 0.5 {
+                let safeWidth = safeRight - safeLeft
+                let safeHeight = safeBottom - safeTop
+                print("[Edge] cursor=(\(Int(pos.x)),\(Int(pos.y))) | win:\(Int(activeZoomWidth))x\(Int(activeZoomHeight)) margin:\(Int(settings.edgeMarginRatio * 100))% safe:\(Int(safeWidth))x\(Int(safeHeight)) | near=L:\(nearLeftEdge) R:\(nearRightEdge) T:\(nearTopEdge) B:\(nearBottomEdge)")
+                lastLogTime = now
+            }
+            #endif
+
+            // Reposition if:
+            // 1. Cursor is near edge of zoom area, OR cursor moved significantly
+            // 2. Enough time has passed since last reposition
+            if (isNearEdge || exceedsThreshold) && timeSinceLastMove > settings.positionHoldDuration {
+                #if DEBUG
+                print("[Edge] REPOSITION triggered! isNearEdge=\(isNearEdge) exceedsThreshold=\(exceedsThreshold)")
+                #endif
+                lockedTargetPosition = pos
+                lastPositionChangeTime = now
+            }
+        }
 
         // Update Overlay Window and Dimming
         if let screen = NSScreen.main {

@@ -13,105 +13,43 @@ struct RecordingOverlayView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Edge margin zones (subtle indicator)
-                EdgeZoneOverlay(margin: edgeMargin)
+                // Safe zone indicator - calculated from full window size
+                SafeZoneIndicator(
+                    windowSize: geo.size,
+                    margin: edgeMargin
+                )
 
-                // High-tech scanner lines
+                // High-tech scanner lines (corner brackets)
                 ViewfinderFrame()
                     .stroke(
                         LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing),
                         lineWidth: 2
                     )
-
-                // Safe zone label at bottom
-                VStack {
-                    Spacer()
-                    Text("SAFE ZONE")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.green.opacity(0.6))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.black.opacity(0.4))
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                        .padding(.bottom, 8)
-                }
             }
         }
-        .padding(2) // Small inset for the border
         .onAppear {
             rotation = 360
         }
     }
 }
 
-// Edge zone overlay showing where repositioning triggers
-struct EdgeZoneOverlay: View {
+// Safe zone indicator that matches the actual detection logic
+struct SafeZoneIndicator: View {
+    let windowSize: CGSize
     let margin: CGFloat
 
     var body: some View {
-        GeometryReader { geo in
-            let marginW = geo.size.width * margin
-            let marginH = geo.size.height * margin
+        // Calculate safe zone exactly as in ScreenRecorder.updateZoom()
+        let marginW = windowSize.width * margin
+        let marginH = windowSize.height * margin
 
-            ZStack {
-                // Left edge zone
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.red.opacity(0.15), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: marginW)
-                    .position(x: marginW / 2, y: geo.size.height / 2)
+        let safeWidth = windowSize.width - marginW * 2
+        let safeHeight = windowSize.height - marginH * 2
 
-                // Right edge zone
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.clear, .red.opacity(0.15)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: marginW)
-                    .position(x: geo.size.width - marginW / 2, y: geo.size.height / 2)
-
-                // Top edge zone
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.red.opacity(0.15), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: geo.size.width - marginW * 2, height: marginH)
-                    .position(x: geo.size.width / 2, y: marginH / 2)
-
-                // Bottom edge zone
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.clear, .red.opacity(0.15)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: geo.size.width - marginW * 2, height: marginH)
-                    .position(x: geo.size.width / 2, y: geo.size.height - marginH / 2)
-
-                // Center safe zone border (dashed)
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .foregroundStyle(.green.opacity(0.3))
-                    .frame(
-                        width: geo.size.width - marginW * 2,
-                        height: geo.size.height - marginH * 2
-                    )
-            }
-        }
+        // Safe zone border (green rectangle)
+        Rectangle()
+            .stroke(.green.opacity(0.5), lineWidth: 1)
+            .frame(width: safeWidth, height: safeHeight)
     }
 }
 
@@ -119,8 +57,7 @@ struct ViewfinderFrame: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let size: CGFloat = 20
-        let thickness: CGFloat = 2
-        
+
         // Top Left
         path.move(to: CGPoint(x: 0, y: size))
         path.addLine(to: CGPoint(x: 0, y: 0))

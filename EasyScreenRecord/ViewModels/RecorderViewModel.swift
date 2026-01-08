@@ -16,6 +16,7 @@ class RecorderViewModel: ObservableObject {
     }
 
     private var selectionWindow: NSWindow?
+    private var selectionController: RegionSelectorController?
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -44,75 +45,106 @@ class RecorderViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-    
+
     func startSelection() {
         if isRecording { return }
         isSelectingRegion = true
-        
-        let screen = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1280, height: 720)
-        let width: CGFloat = 800
-        let height: CGFloat = 600
-        
+
+        guard let screen = NSScreen.main else { return }
+
+        // Create full-screen window for selection
+        // Use a rect starting at origin (0,0) with screen size, then position the window
         let window = NSWindow(
-            contentRect: NSRect(x: (screen.width - width) / 2, y: (screen.height - height) / 2, width: width, height: height),
-            styleMask: [.titled, .resizable, .closable, .borderless],
+            contentRect: NSRect(origin: .zero, size: screen.frame.size),
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        window.title = "Select Recording Area"
+        // Position window at the screen's origin
+        window.setFrameOrigin(screen.frame.origin)
         window.backgroundColor = .clear
         window.isOpaque = false
-        window.hasShadow = true
-        window.level = .floating
-        window.isMovableByWindowBackground = true
+        window.level = .screenSaver  // Above everything
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false
-        
-        let contentView = NSHostingView(rootView: RegionSelectorView(viewModel: self))
+
+        // Create controller for selection logic
+        let controller = RegionSelectorController()
+        controller.onConfirm = { [weak self] rect in
+            self?.confirmSelectionWithRect(rect)
+        }
+        controller.onCancel = { [weak self] in
+            self?.cancelSelection()
+        }
+        self.selectionController = controller
+
+        let contentView = NSHostingView(rootView: RegionSelectorOverlay(controller: controller))
         window.contentView = contentView
-        
+
         window.makeKeyAndOrderFront(nil)
         self.selectionWindow = window
     }
-    
+
     func setFullScreen() {
         if isRecording { return }
         recorder.setBaseRegion(nil)
+        cancelSelection()
+    }
+
+    func cancelSelection() {
         isSelectingRegion = false
         selectionWindow?.close()
         selectionWindow = nil
+        selectionController = nil
     }
-    
-    func confirmSelection() {
-        guard let window = selectionWindow else { return }
 
-        // Capture frame BEFORE closing
-        let frame = window.frame
+    private func confirmSelectionWithRect(_ rect: CGRect) {
+        guard let screen = NSScreen.main else { return }
 
-        // Convert screen coordinates (bottom-left) to display coordinates if needed.
-        // ScreenCaptureKit uses top-left origin for sourceRect.
-        // However, we handle the conversion in ScreenRecorder.updateZoom()
+        // Convert from SwiftUI coordinates (top-left origin within window)
+        // to NSWindow coordinates (bottom-left origin)
+        // Note: baseRegion should be in screen-local coordinates (not global)
+        let screenHeight = screen.frame.height
 
-        recorder.setBaseRegion(frame)
+        // SwiftUI Y is from top, NSWindow Y is from bottom
+        let convertedRect = CGRect(
+            x: rect.origin.x,
+            y: screenHeight - rect.origin.y - rect.height,
+            width: rect.width,
+            height: rect.height
+        )
 
-        // Close window asynchronously to avoid issues with the button being inside the window
-        self.selectionWindow = nil
-        self.isSelectingRegion = false
-        window.close()
+        recorder.setBaseRegion(convertedRect)
 
-        // Start recording automatically after confirming region selection
+        // Close selection window
+        isSelectingRegion = false
+        selectionWindow?.close()
+        selectionWindow = nil
+        selectionController = nil
+
+        // Start recording automatically
         Task {
             await recorder.startCapture()
         }
     }
-    
+
+    // Legacy method for compatibility
+    func confirmSelection() {
+        guard let window = selectionWindow else { return }
+        let frame = window.frame
+        recorder.setBaseRegion(frame)
+        cancelSelection()
+        Task {
+            await recorder.startCapture()
+        }
+    }
+
     func toggleRecording() {
         if isRecording {
             Task {
                 await recorder.stopCapture()
             }
         } else {
-            // Already handled by startCapture if needed, 
-            // but let's ensure we don't double call
             Task {
                 await recorder.startCapture()
             }
