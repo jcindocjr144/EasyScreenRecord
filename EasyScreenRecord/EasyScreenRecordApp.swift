@@ -73,7 +73,7 @@ struct MenuBarContentView: View {
             .padding(.vertical, 4)
         }
 
-        // Record/Stop Button
+        // Record/Stop Button (at top)
         Button {
             if viewModel.isRecording {
                 viewModel.toggleRecording()
@@ -96,61 +96,118 @@ struct MenuBarContentView: View {
                 Label("Record Full Screen", systemImage: "macwindow")
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
-        }
 
-        Divider()
+            Divider()
 
-        // Zoom Scale
-        Menu {
-            ForEach([1.5, 2.0, 2.5, 3.0, 4.0], id: \.self) { scale in
-                Button {
-                    viewModel.zoomScale = scale
-                } label: {
-                    HStack {
-                        Text(String(format: "%.1fx", scale))
-                        if viewModel.zoomScale == scale {
-                            Image(systemName: "checkmark")
-                        }
+            // Recording options
+            Button {
+                viewModel.recorder.zoomSettings.smartZoomEnabled.toggle()
+            } label: {
+                HStack {
+                    Label("Smart Zoom", systemImage: "plus.magnifyingglass")
+                    Spacer()
+                    if viewModel.recorder.zoomSettings.smartZoomEnabled {
+                        Image(systemName: "checkmark")
                     }
                 }
             }
-        } label: {
-            Label("Zoom: \(String(format: "%.1fx", viewModel.zoomScale))", systemImage: "plus.magnifyingglass")
+
+            Button {
+                viewModel.recorder.zoomSettings.subtitlesEnabled.toggle()
+            } label: {
+                HStack {
+                    Label("自動字幕", systemImage: "captions.bubble")
+                    Spacer()
+                    if viewModel.recorder.zoomSettings.subtitlesEnabled {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+
+            // Zoom settings (only if smart zoom is enabled)
+            if viewModel.recorder.zoomSettings.smartZoomEnabled {
+                Menu {
+                    // Zoom mode selection
+                    Button {
+                        viewModel.recorder.zoomSettings.zoomMode = .scale
+                    } label: {
+                        HStack {
+                            Text("倍率で指定")
+                            if viewModel.recorder.zoomSettings.zoomMode == .scale {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    Button {
+                        viewModel.recorder.zoomSettings.zoomMode = .frameSize
+                    } label: {
+                        HStack {
+                            Text("フレームサイズで指定")
+                            if viewModel.recorder.zoomSettings.zoomMode == .frameSize {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    if viewModel.recorder.zoomSettings.zoomMode == .scale {
+                        ForEach([1.5, 2.0, 2.5, 3.0, 4.0], id: \.self) { scale in
+                            Button {
+                                viewModel.zoomScale = scale
+                            } label: {
+                                HStack {
+                                    Text(String(format: "%.1fx", scale))
+                                    if viewModel.zoomScale == scale {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        ForEach([(400, 300), (640, 480), (800, 600), (1024, 768), (1280, 720)], id: \.0) { size in
+                            Button {
+                                viewModel.recorder.zoomSettings.zoomFrameWidth = CGFloat(size.0)
+                                viewModel.recorder.zoomSettings.zoomFrameHeight = CGFloat(size.1)
+                            } label: {
+                                HStack {
+                                    Text("\(size.0)×\(size.1)")
+                                    if Int(viewModel.recorder.zoomSettings.zoomFrameWidth) == size.0 &&
+                                       Int(viewModel.recorder.zoomSettings.zoomFrameHeight) == size.1 {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    if viewModel.recorder.zoomSettings.zoomMode == .scale {
+                        Label("Zoom: \(String(format: "%.1fx", viewModel.zoomScale))", systemImage: "arrow.up.left.and.arrow.down.right")
+                    } else {
+                        Label("Zoom: \(Int(viewModel.recorder.zoomSettings.zoomFrameWidth))×\(Int(viewModel.recorder.zoomSettings.zoomFrameHeight))", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                }
+            }
+
+            Divider()
+
+            // Settings
+            Button {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "settings")
+            } label: {
+                Label("Settings...", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",", modifiers: .command)
         }
 
-        // Presets
-        Menu {
-            Button("Smooth") {
-                applyPreset(.smooth, to: viewModel.recorder.zoomSettings)
-            }
-            Button("Default") {
-                applyPreset(.default, to: viewModel.recorder.zoomSettings)
-            }
-            Button("Fast") {
-                applyPreset(.responsive, to: viewModel.recorder.zoomSettings)
-            }
-        } label: {
-            Label("Presets", systemImage: "slider.horizontal.3")
-        }
-
-        Divider()
-
-        // Open Output Folder
+        // Open Output Folder (always available)
         Button {
             let url = viewModel.recorder.zoomSettings.effectiveOutputDirectory
             NSWorkspace.shared.open(url)
         } label: {
             Label("Open Output Folder", systemImage: "folder")
         }
-
-        // Settings
-        Button {
-            NSApp.activate(ignoringOtherApps: true)
-            openWindow(id: "settings")
-        } label: {
-            Label("Settings...", systemImage: "gearshape")
-        }
-        .keyboardShortcut(",", modifiers: .command)
 
         Divider()
 

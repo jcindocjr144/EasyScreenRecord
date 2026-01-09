@@ -45,6 +45,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
     private var lockedTargetPosition: CGPoint = .zero  // Position that zoom is locked to
     private var currentSourceRect: CGRect = .zero
     private var displaySize: CGSize = .zero
+    private var displayOrigin: CGPoint = .zero  // Display origin in global coordinates
     private var currentSmoothScale: CGFloat = 1.0
     private var isTypingDetected = false
     private var lastTypingDetectedTime: Date = .distantPast
@@ -57,7 +58,11 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
     private var overlayViewModel: OverlayViewModel?
     private var dimmingWindow: NSWindow?
     private var dimmingViewModel: DimmingViewModel?
+    private var subtitleWindow: NSWindow?
+    private var subtitleViewModel: SubtitleViewModel?
     private var lastUpdateTimestamp: Date = .distantPast
+    private var lastSubtitleText: String = ""
+    private var lastSubtitleUpdateTime: Date = .distantPast
 
     // Serial queue for writing to ensure safety
     private let writingQueue = DispatchQueue(label: "com.nya3neko2.EasyScreenRecord.writingQueue", qos: .userInitiated)
@@ -101,6 +106,16 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
 
             displaySize = CGSize(width: CGFloat(display.width), height: CGFloat(display.height))
 
+            // Get display origin for coordinate conversion (Accessibility uses global coordinates)
+            // SCDisplay doesn't expose frame directly, so get it from NSScreen
+            let targetScreen = getTargetScreen()
+            // NSScreen uses bottom-left origin; convert to top-left for Accessibility coordinates
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? displaySize.height
+            displayOrigin = CGPoint(
+                x: targetScreen.frame.origin.x,
+                y: primaryHeight - targetScreen.frame.origin.y - targetScreen.frame.height
+            )
+
             let config = SCStreamConfiguration()
             config.width = Int(displaySize.width) * 2
             config.height = Int(displaySize.height) * 2
@@ -143,14 +158,14 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             lastPositionChangeTime = .distantPast
             currentSourceRect = CGRect(origin: .zero, size: displaySize)
 
-            // Initialize lastTargetPosition based on baseRegion or screen center
+            // Initialize lastTargetPosition based on baseRegion or screen center (in local coordinates)
             let initialPosition: CGPoint
             if let region = baseRegion {
-                // baseRegion is in NSWindow coordinates (bottom-left origin)
-                // Convert center to top-left origin
-                let centerX = region.midX
-                let centerY = displaySize.height - region.midY
-                initialPosition = CGPoint(x: centerX, y: centerY)
+                // baseRegion is in NSWindow global coordinates (bottom-left origin)
+                // Convert to display-local top-left origin
+                let localX = region.midX - displayOrigin.x
+                let localY = displaySize.height - (region.midY - displayOrigin.y)
+                initialPosition = CGPoint(x: localX, y: localY)
             } else {
                 initialPosition = CGPoint(x: displaySize.width / 2, y: displaySize.height / 2)
             }
@@ -167,8 +182,11 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
 
             try await newStream.startCapture()
 
+            // Start keyboard monitoring for typing detection
+            KeyboardMonitor.shared.startMonitoring()
+
             // Initialize dimming hole rect based on baseRegion or full screen
-            let targetScreen = getTargetScreen()
+            // Note: targetScreen was already obtained above for displayOrigin
             if let viewModel = dimmingViewModel {
                 let screenHeight = targetScreen.frame.height
                 let screenOrigin = targetScreen.frame.origin
@@ -187,6 +205,13 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             // Windows already shown at start, just ensure they're on top
             self.overlayWindow?.orderFrontRegardless()
             self.dimmingWindow?.orderFrontRegardless()
+
+            // Setup subtitle window AFTER stream starts (so it IS captured in recording)
+            if zoomSettings.subtitlesEnabled {
+                setupSubtitleWindow()
+                updateSubtitlePosition()
+                subtitleWindow?.orderFrontRegardless()
+            }
 
             startZoomTimer()
             
@@ -214,6 +239,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         // Change state immediately to block new start requests
         state = .stopping
         stopZoomTimer()
+        KeyboardMonitor.shared.stopMonitoring()
         cleanupWindows() // Hide windows immediately for better UX
 
         let activeStream = self.stream
@@ -397,6 +423,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         window.isOpaque = false
         window.ignoresMouseEvents = true
         window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false // Prevent double-free crash
 
         // Create view model for dynamic updates
@@ -413,6 +440,59 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         self.dimmingWindow = window
     }
     
+    private func setupSubtitleWindow() {
+        let targetScreen = getTargetScreen()
+
+        // Create subtitle window - this one IS captured in recording
+        // Use .normal level (not .floating) so it gets captured by ScreenCaptureKit
+        let window = NSWindow(
+            contentRect: CGRect(x: targetScreen.frame.origin.x,
+                              y: targetScreen.frame.origin.y,
+                              width: targetScreen.frame.width,
+                              height: 100),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.ignoresMouseEvents = true
+        // Use .normal level so it gets captured in recording (not excluded like .floating)
+        window.level = .normal
+        window.isReleasedWhenClosed = false
+        // Don't use canJoinAllSpaces to ensure it's treated as a regular window
+        window.collectionBehavior = [.stationary, .ignoresCycle]
+
+        let viewModel = SubtitleViewModel()
+        viewModel.fontSize = zoomSettings.subtitleFontSize
+        viewModel.backgroundOpacity = zoomSettings.subtitleBackgroundOpacity
+        self.subtitleViewModel = viewModel
+
+        let contentView = NSHostingView(rootView: SubtitleView(viewModel: viewModel))
+        window.contentView = contentView
+        self.subtitleWindow = window
+    }
+
+    private func updateSubtitlePosition() {
+        guard let window = subtitleWindow else { return }
+        let targetScreen = getTargetScreen()
+
+        // Position at bottom or top of screen based on setting
+        let yPosition: CGFloat
+        if zoomSettings.subtitlePosition == 0 {
+            // Bottom
+            yPosition = targetScreen.frame.origin.y + 50
+        } else {
+            // Top
+            yPosition = targetScreen.frame.origin.y + targetScreen.frame.height - 150
+        }
+
+        window.setFrame(CGRect(x: targetScreen.frame.origin.x,
+                               y: yPosition,
+                               width: targetScreen.frame.width,
+                               height: 100), display: true)
+    }
+
     private func cleanupWindows() {
         overlayWindow?.close()
         overlayWindow = nil
@@ -420,6 +500,9 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         dimmingWindow?.close()
         dimmingWindow = nil
         dimmingViewModel = nil
+        subtitleWindow?.close()
+        subtitleWindow = nil
+        subtitleViewModel = nil
     }
     
     private func updateOverlaySize() {
@@ -475,21 +558,33 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             }
             // Hide overlay when smart zoom is disabled
             overlayWindow?.alphaValue = 0.0
+
+            // Still show dimming for the recording region
             let targetScreen = getTargetScreen()
+            let screenHeight = targetScreen.frame.height
+            let screenOrigin = targetScreen.frame.origin
             if let viewModel = dimmingViewModel {
-                viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
+                if settings.showDimming, let region = baseRegion {
+                    let localX = region.origin.x - screenOrigin.x
+                    let localY = screenHeight - (region.origin.y - screenOrigin.y) - region.height
+                    viewModel.holeRect = CGRect(x: localX, y: localY, width: region.width, height: region.height)
+                } else {
+                    viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
+                }
             }
             return
         }
 
         let typingPosition = AccessibilityUtils.getTypingCursorPosition()
 
-        // Calculate default center position (in top-left origin coordinates)
+        // Calculate default center position (in display-local top-left origin coordinates)
         let defaultCenter: CGPoint
         if let region = baseRegion {
-            // baseRegion is in NSWindow coordinates (bottom-left origin)
-            // Convert to top-left origin
-            defaultCenter = CGPoint(x: region.midX, y: displaySize.height - region.midY)
+            // baseRegion is in NSWindow global coordinates (bottom-left origin)
+            // Convert to display-local top-left origin
+            let localX = region.midX - displayOrigin.x
+            let localY = displaySize.height - (region.midY - displayOrigin.y)
+            defaultCenter = CGPoint(x: localX, y: localY)
         } else {
             defaultCenter = CGPoint(x: displaySize.width / 2, y: displaySize.height / 2)
         }
@@ -499,23 +594,42 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         var detectedPosition: CGPoint? = nil
 
         if let typingPos = typingPosition {
-            // Check if typing position is within baseRegion
+            // Convert global coordinates to display-local coordinates
+            let localTypingPos = CGPoint(
+                x: typingPos.x - displayOrigin.x,
+                y: typingPos.y - displayOrigin.y
+            )
+
+            #if DEBUG
+            if now.timeIntervalSince(lastLogTime) > 1.0 {
+                print("[Zoom] global: \(typingPos), local: \(localTypingPos), displayOrigin: \(displayOrigin), displaySize: \(displaySize)")
+                lastLogTime = now
+            }
+            #endif
+
+            // Check if typing position is within display bounds
+            let displayBounds = CGRect(origin: .zero, size: displaySize)
+            let isInDisplay = displayBounds.contains(localTypingPos)
+
+            // Also check if within baseRegion (if set)
             let isInRegion: Bool
             if let region = baseRegion {
+                // baseRegion is in NSWindow coordinates (bottom-left origin)
+                // Convert to top-left origin for comparison
                 let regionTopLeft = CGRect(
-                    x: region.origin.x,
-                    y: displaySize.height - region.origin.y - region.height,
+                    x: region.origin.x - displayOrigin.x,
+                    y: displaySize.height - (region.origin.y - displayOrigin.y) - region.height,
                     width: region.width,
                     height: region.height
                 )
-                isInRegion = regionTopLeft.contains(typingPos)
+                isInRegion = regionTopLeft.contains(localTypingPos)
             } else {
-                isInRegion = true
+                isInRegion = isInDisplay
             }
 
             if isInRegion {
                 newTypingDetected = true
-                detectedPosition = typingPos
+                detectedPosition = localTypingPos  // Use local coordinates
             }
         }
 
@@ -544,48 +658,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         // Store detected position for edge margin check after smoothing
         let edgeCheckPosition = detectedPosition
 
-        // Determine target scale and position
-        let targetScale: CGFloat
-        var targetPosition: CGPoint
-
-        if shouldZoom {
-            // Clamp zoom scale to min/max bounds
-            targetScale = max(settings.minZoomScale, min(settings.maxZoomScale, settings.zoomScale))
-            // Apply center offset to the locked position
-            // Offset moves the zoom center relative to cursor position
-            let baseWidth: CGFloat
-            let baseHeight: CGFloat
-            if let region = baseRegion {
-                baseWidth = region.width
-                baseHeight = region.height
-            } else {
-                baseWidth = displaySize.width
-                baseHeight = displaySize.height
-            }
-            let zoomWidth = baseWidth / settings.zoomScale
-            let zoomHeight = baseHeight / settings.zoomScale
-
-            // Apply offset: positive X moves zoom right (cursor appears more to the left)
-            // positive Y moves zoom down (cursor appears more to the top)
-            let offsetX = zoomWidth * settings.centerOffsetX
-            let offsetY = zoomHeight * settings.centerOffsetY
-            targetPosition = CGPoint(
-                x: lockedTargetPosition.x + offsetX,
-                y: lockedTargetPosition.y + offsetY
-            )
-            isTypingDetected = true
-        } else {
-            targetScale = 1.0
-            targetPosition = defaultCenter
-            isTypingDetected = false
-        }
-
-        // Smooth interpolation with configurable smoothing
-        currentSmoothScale += (targetScale - currentSmoothScale) * settings.scaleSmoothing
-        lastTargetPosition.x += (targetPosition.x - lastTargetPosition.x) * settings.positionSmoothing
-        lastTargetPosition.y += (targetPosition.y - lastTargetPosition.y) * settings.positionSmoothing
-
-        // Calculate zoom area size based on baseRegion if set, otherwise full screen
+        // Calculate base dimensions (recording area or full screen)
         let baseWidth: CGFloat
         let baseHeight: CGFloat
         if let region = baseRegion {
@@ -596,8 +669,67 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             baseHeight = displaySize.height
         }
 
-        let activeZoomWidth = baseWidth / currentSmoothScale
-        let activeZoomHeight = baseHeight / currentSmoothScale
+        // Determine target scale and zoom dimensions based on zoom mode
+        let targetScale: CGFloat
+        let targetZoomWidth: CGFloat
+        let targetZoomHeight: CGFloat
+        var targetPosition: CGPoint
+
+        if shouldZoom {
+            switch settings.zoomMode {
+            case .scale:
+                // Scale mode: use zoom scale directly
+                targetScale = max(settings.minZoomScale, min(settings.maxZoomScale, settings.zoomScale))
+                targetZoomWidth = baseWidth / targetScale
+                targetZoomHeight = baseHeight / targetScale
+
+            case .frameSize:
+                // Frame size mode: use specified frame dimensions
+                // Clamp frame size to not exceed base dimensions
+                targetZoomWidth = min(settings.zoomFrameWidth, baseWidth)
+                targetZoomHeight = min(settings.zoomFrameHeight, baseHeight)
+                // Calculate equivalent scale for smoothing
+                targetScale = baseWidth / targetZoomWidth
+            }
+
+            // Apply center offset to the locked position
+            let offsetX = targetZoomWidth * settings.centerOffsetX
+            let offsetY = targetZoomHeight * settings.centerOffsetY
+            targetPosition = CGPoint(
+                x: lockedTargetPosition.x + offsetX,
+                y: lockedTargetPosition.y + offsetY
+            )
+            isTypingDetected = true
+        } else {
+            targetScale = 1.0
+            targetZoomWidth = baseWidth
+            targetZoomHeight = baseHeight
+            targetPosition = defaultCenter
+            isTypingDetected = false
+        }
+
+        // Smooth interpolation with configurable smoothing
+        currentSmoothScale += (targetScale - currentSmoothScale) * settings.scaleSmoothing
+        lastTargetPosition.x += (targetPosition.x - lastTargetPosition.x) * settings.positionSmoothing
+        lastTargetPosition.y += (targetPosition.y - lastTargetPosition.y) * settings.positionSmoothing
+
+        // Calculate active zoom dimensions based on current smooth scale
+        let activeZoomWidth: CGFloat
+        let activeZoomHeight: CGFloat
+
+        switch settings.zoomMode {
+        case .scale:
+            activeZoomWidth = baseWidth / currentSmoothScale
+            activeZoomHeight = baseHeight / currentSmoothScale
+        case .frameSize:
+            // Interpolate frame size for smooth animation
+            let targetW = shouldZoom ? min(settings.zoomFrameWidth, baseWidth) : baseWidth
+            let targetH = shouldZoom ? min(settings.zoomFrameHeight, baseHeight) : baseHeight
+            let progress = (currentSmoothScale - 1.0) / (targetScale - 1.0 + 0.001) // Avoid division by zero
+            let clampedProgress = max(0, min(1, progress))
+            activeZoomWidth = baseWidth + (targetW - baseWidth) * clampedProgress
+            activeZoomHeight = baseHeight + (targetH - baseHeight) * clampedProgress
+        }
 
         // Calculate source rect origin (top-left corner of the zoom area)
         var sourceX = lastTargetPosition.x - activeZoomWidth / 2
@@ -681,13 +813,19 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         // Update dimming hole rect (needs window-local coordinates)
         if let viewModel = self.dimmingViewModel {
             if settings.showDimming {
-                // Convert global coords to window-local coords
-                // sourceX, sourceY are in top-left origin global coords
-                let localX = sourceX - screenOrigin.x
-                let localY = sourceY - screenOrigin.y
-                viewModel.holeRect = CGRect(x: localX, y: localY, width: activeZoomWidth, height: activeZoomHeight)
+                if let region = baseRegion {
+                    // Show hole for the entire recording region (baseRegion)
+                    // baseRegion is in NSWindow global coords (bottom-left origin)
+                    // Convert to SwiftUI window-local coords (top-left origin)
+                    let localX = region.origin.x - screenOrigin.x
+                    let localY = screenHeight - (region.origin.y - screenOrigin.y) - region.height
+                    viewModel.holeRect = CGRect(x: localX, y: localY, width: region.width, height: region.height)
+                } else {
+                    // Full screen recording - no dimming needed
+                    viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
+                }
             } else {
-                // No dimming - hole covers entire screen
+                // Dimming disabled - hole covers entire screen
                 viewModel.holeRect = CGRect(origin: .zero, size: targetScreen.frame.size)
             }
         }
@@ -707,6 +845,29 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
                 }
             }
             lastUpdateTimestamp = now
+        }
+
+        // Update subtitles if enabled
+        if settings.subtitlesEnabled, let viewModel = subtitleViewModel {
+            // Get typed text from accessibility API
+            if let typedText = AccessibilityUtils.getTypedText() {
+                if typedText != lastSubtitleText {
+                    lastSubtitleText = typedText
+                    lastSubtitleUpdateTime = now
+                    viewModel.text = typedText
+                    viewModel.isVisible = true
+                }
+            }
+
+            // Hide subtitle after display duration of no typing
+            let timeSinceLastUpdate = now.timeIntervalSince(lastSubtitleUpdateTime)
+            if timeSinceLastUpdate > settings.subtitleDisplayDuration && viewModel.isVisible {
+                viewModel.isVisible = false
+            }
+
+            // Update view model settings
+            viewModel.fontSize = settings.subtitleFontSize
+            viewModel.backgroundOpacity = settings.subtitleBackgroundOpacity
         }
     }
 
@@ -810,3 +971,39 @@ struct DimmingView: View {
         .edgesIgnoringSafeArea(.all)
     }
 }
+
+// MARK: - Subtitle View Model
+class SubtitleViewModel: ObservableObject {
+    @Published var text: String = ""
+    @Published var isVisible: Bool = false
+    @Published var fontSize: CGFloat = 24
+    @Published var backgroundOpacity: CGFloat = 0.7
+}
+
+// MARK: - Subtitle View
+struct SubtitleView: View {
+    @ObservedObject var viewModel: SubtitleViewModel
+
+    var body: some View {
+        HStack {
+            Spacer()
+            if viewModel.isVisible && !viewModel.text.isEmpty {
+                Text(viewModel.text)
+                    .font(.system(size: viewModel.fontSize, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.black.opacity(viewModel.backgroundOpacity))
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.text)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.3), value: viewModel.isVisible)
+    }
+}
+

@@ -53,23 +53,24 @@ class RecorderViewModel: ObservableObject {
         guard let screen = NSScreen.main else { return }
 
         // Create full-screen window for selection
-        // Use a rect starting at origin (0,0) with screen size, then position the window
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: screen.frame.size),
+            contentRect: screen.frame,
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        // Position window at the screen's origin
-        window.setFrameOrigin(screen.frame.origin)
         window.backgroundColor = .clear
         window.isOpaque = false
+        window.hasShadow = false
         window.level = .screenSaver  // Above everything
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false
+        window.acceptsMouseMovedEvents = true
+        window.ignoresMouseEvents = false  // Important: accept mouse events
 
         // Create controller for selection logic
         let controller = RegionSelectorController()
+        controller.zoomSettings = recorder.zoomSettings  // Pass settings for toggles
         controller.onConfirm = { [weak self] rect in
             self?.confirmSelectionWithRect(rect)
         }
@@ -78,10 +79,12 @@ class RecorderViewModel: ObservableObject {
         }
         self.selectionController = controller
 
-        let contentView = NSHostingView(rootView: RegionSelectorOverlay(controller: controller))
-        window.contentView = contentView
+        let hostingView = NSHostingView(rootView: RegionSelectorOverlay(controller: controller))
+        hostingView.frame = NSRect(origin: .zero, size: screen.frame.size)
+        window.contentView = hostingView
 
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)  // Ensure app is frontmost
         self.selectionWindow = window
     }
 

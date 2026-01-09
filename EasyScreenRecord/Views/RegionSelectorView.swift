@@ -10,6 +10,9 @@ class RegionSelectorController {
     var isAdjusting = false  // After initial drag, allow adjustments
     var activeHandle: ResizeHandle? = nil
 
+    // Settings reference for toggles
+    var zoomSettings: ZoomSettings?
+
     var onConfirm: ((CGRect) -> Void)?
     var onCancel: (() -> Void)?
 
@@ -159,72 +162,207 @@ class RegionSelectorController {
 // MARK: - Full Screen Overlay View
 struct RegionSelectorOverlay: View {
     var controller: RegionSelectorController
+    @State private var selectionRect: CGRect = .zero
+    @State private var isDragging = false
+    @State private var isAdjusting = false
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 // Dimmed background with hole for selection
-                SelectionMaskView(rect: controller.selectionRect, screenSize: geo.size)
+                SelectionMaskView(rect: selectionRect, screenSize: geo.size)
+                    .allowsHitTesting(false)
 
-                // Selection rectangle
-                if controller.selectionRect.width > 0 && controller.selectionRect.height > 0 {
-                    SelectionRectView(
-                        rect: controller.selectionRect,
-                        isAdjusting: controller.isAdjusting,
-                        controller: controller
-                    )
+                // Selection rectangle during dragging
+                if selectionRect.width > 0 && selectionRect.height > 0 {
+                    if isAdjusting, let settings = controller.zoomSettings {
+                        // Full SelectionRectView with buttons (clickable)
+                        SelectionRectView(
+                            rect: selectionRect,
+                            isAdjusting: isAdjusting,
+                            controller: controller,
+                            settings: settings
+                        )
+                    } else {
+                        // Simple selection rect during initial drag
+                        Rectangle()
+                            .stroke(Color.blue, lineWidth: 2)
+                            .frame(width: selectionRect.width, height: selectionRect.height)
+                            .position(x: selectionRect.midX, y: selectionRect.midY)
+                            .allowsHitTesting(false)
+
+                        // Size label
+                        Text("\(Int(selectionRect.width)) x \(Int(selectionRect.height))")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.7))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .position(x: selectionRect.midX, y: selectionRect.minY - 20)
+                            .allowsHitTesting(false)
+                    }
                 }
 
                 // Instructions
                 VStack {
-                    if !controller.isAdjusting && !controller.isDragging {
+                    if !isAdjusting && !isDragging {
                         InstructionBadge(text: "ドラッグで範囲を選択 (ESCでキャンセル)", icon: "rectangle.dashed")
-                    } else if controller.isDragging {
+                    } else if isDragging {
                         InstructionBadge(text: "離して範囲を確定", icon: "hand.draw")
-                    } else if controller.isAdjusting {
+                    } else if isAdjusting {
                         InstructionBadge(text: "Enterで録画開始 / ESCでキャンセル", icon: "keyboard")
                     }
                     Spacer()
                 }
                 .padding(.top, 60)
+                .allowsHitTesting(false)
 
-                // Cancel button (top right)
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button(action: { controller.cancel() }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
-                        .buttonStyle(.plain)
-                        .keyboardShortcut(.escape, modifiers: [])
-                        .padding(20)
-                    }
-                    Spacer()
+                // Cancel button (always visible)
+                Button(action: { controller.cancel() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.white.opacity(0.8))
                 }
-            }
-            .background(Color.clear)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if controller.activeHandle == nil && !controller.isDragging && !controller.isAdjusting {
-                            controller.startDrag(at: value.startLocation)
+                .buttonStyle(.plain)
+                .position(x: geo.size.width - 40, y: 40)
+
+                // Mouse event handling layer - only active when NOT in adjustment mode
+                if !isAdjusting {
+                    MouseTrackingView(
+                        onDragStart: { point in
+                            controller.startDrag(at: point)
+                            isDragging = true
+                        },
+                        onDragUpdate: { point in
+                            if isDragging {
+                                controller.continueDrag(to: point)
+                                selectionRect = controller.selectionRect
+                            }
+                        },
+                        onDragEnd: {
+                            if isDragging {
+                                controller.endDrag()
+                                isDragging = false
+                                isAdjusting = controller.isAdjusting
+                                selectionRect = controller.selectionRect
+                            }
+                        },
+                        onCancel: {
+                            controller.cancel()
+                        },
+                        onConfirm: {
+                            // Not used when not adjusting
                         }
-                        controller.continueDrag(to: value.location)
-                    }
-                    .onEnded { _ in
-                        controller.endDrag()
-                    }
-            )
-            .onTapGesture { location in
-                if controller.isAdjusting {
-                    controller.startDrag(at: location)
+                    )
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
             }
         }
         .ignoresSafeArea()
+        .onKeyPress(.escape) {
+            controller.cancel()
+            return .handled
+        }
+        .onKeyPress(.return) {
+            if isAdjusting {
+                controller.confirm()
+            }
+            return .handled
+        }
+        .focusable()
+        .focusEffectDisabled()
+    }
+}
+
+// MARK: - Mouse Tracking View (AppKit-based)
+struct MouseTrackingView: NSViewRepresentable {
+    let onDragStart: (CGPoint) -> Void
+    let onDragUpdate: (CGPoint) -> Void
+    let onDragEnd: () -> Void
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    func makeNSView(context: Context) -> MouseTrackingNSView {
+        let view = MouseTrackingNSView()
+        view.onDragStart = onDragStart
+        view.onDragUpdate = onDragUpdate
+        view.onDragEnd = onDragEnd
+        view.onCancel = onCancel
+        view.onConfirm = onConfirm
+        return view
+    }
+
+    func updateNSView(_ nsView: MouseTrackingNSView, context: Context) {
+        nsView.onDragStart = onDragStart
+        nsView.onDragUpdate = onDragUpdate
+        nsView.onDragEnd = onDragEnd
+        nsView.onCancel = onCancel
+        nsView.onConfirm = onConfirm
+    }
+}
+
+class MouseTrackingNSView: NSView {
+    var onDragStart: ((CGPoint) -> Void)?
+    var onDragUpdate: ((CGPoint) -> Void)?
+    var onDragEnd: (() -> Void)?
+    var onCancel: (() -> Void)?
+    var onConfirm: (() -> Void)?
+
+    private var isDragging = false
+    private var trackingArea: NSTrackingArea?
+
+    override var acceptsFirstResponder: Bool { true }
+    override var isFlipped: Bool { true }  // Use top-left origin like SwiftUI
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        if let ta = trackingArea {
+            addTrackingArea(ta)
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.makeFirstResponder(self)
+        updateTrackingAreas()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        isDragging = true
+        onDragStart?(point)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDragging else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        onDragUpdate?(point)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isDragging else { return }
+        isDragging = false
+        onDragEnd?()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            onCancel?()
+        } else if event.keyCode == 36 { // Return
+            onConfirm?()
+        } else {
+            super.keyDown(with: event)
+        }
     }
 }
 
@@ -248,6 +386,7 @@ struct SelectionMaskView: View {
             }
         }
         .compositingGroup()
+        .allowsHitTesting(false)  // Don't block mouse events
     }
 }
 
@@ -256,6 +395,7 @@ struct SelectionRectView: View {
     let rect: CGRect
     let isAdjusting: Bool
     var controller: RegionSelectorController
+    @ObservedObject var settings: ZoomSettings
 
     var body: some View {
         ZStack {
@@ -298,25 +438,43 @@ struct SelectionRectView: View {
                     HandleView(position: CGPoint(x: rect.maxX, y: rect.midY), isEdge: true)
                 }
 
-                // Confirm button (inside the selection)
-                Button(action: { controller.confirm() }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 16))
-                        Text("録画開始")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                // Toggles and Confirm button (inside the selection)
+                VStack(spacing: 12) {
+                    // Option toggles
+                    HStack(spacing: 16) {
+                        OptionToggleButton(
+                            icon: "plus.magnifyingglass",
+                            label: "Zoom",
+                            isOn: settings.smartZoomEnabled,
+                            action: { settings.smartZoomEnabled.toggle() }
+                        )
+                        OptionToggleButton(
+                            icon: "captions.bubble",
+                            label: "字幕",
+                            isOn: settings.subtitlesEnabled,
+                            action: { settings.subtitlesEnabled.toggle() }
+                        )
                     }
-                    .foregroundColor(.white)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                    .background(
-                        LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing)
-                    )
-                    .clipShape(Capsule())
-                    .shadow(color: .red.opacity(0.5), radius: 10, y: 5)
+
+                    // Confirm button
+                    Button(action: { controller.confirm() }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 16))
+                            Text("録画開始")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 24)
+                        .background(
+                            LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .clipShape(Capsule())
+                        .shadow(color: .red.opacity(0.5), radius: 10, y: 5)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.return, modifiers: [])
                 .position(x: rect.midX, y: rect.midY)
             }
         }
@@ -371,6 +529,33 @@ struct InstructionBadge: View {
         .background(.ultraThinMaterial)
         .clipShape(Capsule())
         .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+    }
+}
+
+// MARK: - Option Toggle Button
+struct OptionToggleButton: View {
+    let icon: String
+    let label: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                Text(label)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+            }
+            .foregroundColor(isOn ? .white : .white.opacity(0.7))
+            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .background(isOn ? Color.blue : Color.white.opacity(0.2))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

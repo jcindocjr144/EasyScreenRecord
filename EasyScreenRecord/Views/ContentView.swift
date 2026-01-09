@@ -123,6 +123,36 @@ struct ContentView: View {
             .padding(.horizontal, 4)
             .disabled(viewModel.isRecording)
             
+            // Quick toggles (only when not recording)
+            if !viewModel.isRecording {
+                HStack(spacing: 16) {
+                    // Smart Zoom toggle
+                    Toggle(isOn: Binding(
+                        get: { viewModel.recorder.zoomSettings.smartZoomEnabled },
+                        set: { viewModel.recorder.zoomSettings.smartZoomEnabled = $0 }
+                    )) {
+                        Label("Zoom", systemImage: "plus.magnifyingglass")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(viewModel.recorder.zoomSettings.smartZoomEnabled ? .blue : .gray)
+
+                    // Subtitles toggle
+                    Toggle(isOn: Binding(
+                        get: { viewModel.recorder.zoomSettings.subtitlesEnabled },
+                        set: { viewModel.recorder.zoomSettings.subtitlesEnabled = $0 }
+                    )) {
+                        Label("字幕", systemImage: "captions.bubble")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(viewModel.recorder.zoomSettings.subtitlesEnabled ? .blue : .gray)
+                }
+                .padding(.horizontal, 4)
+            }
+
             // Primary Controls
             Button(action: {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -183,13 +213,49 @@ struct ZoomSettingsView: View {
                 Toggle("Smart Zoom", isOn: $settings.smartZoomEnabled)
 
                 if settings.smartZoomEnabled {
-                    LabeledContent("ズーム倍率") {
-                        HStack {
-                            Text(String(format: "%.1fx", settings.zoomScale))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                            Stepper("", value: $settings.zoomScale, in: 1.5...5.0, step: 0.5)
-                                .labelsHidden()
+                    LabeledContent("ズーム方式") {
+                        Picker("", selection: Binding(
+                            get: { settings.zoomMode.rawValue },
+                            set: { settings.zoomMode = ZoomSettings.ZoomMode(rawValue: $0) ?? .scale }
+                        )) {
+                            Text("倍率").tag(0)
+                            Text("サイズ").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 120)
+                    }
+
+                    if settings.zoomMode == .scale {
+                        LabeledContent("ズーム倍率") {
+                            HStack {
+                                Text(String(format: "%.1fx", settings.zoomScale))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                Stepper("", value: $settings.zoomScale, in: 1.5...5.0, step: 0.5)
+                                    .labelsHidden()
+                            }
+                        }
+                    } else {
+                        LabeledContent("フレーム幅") {
+                            HStack {
+                                Text("\(Int(settings.zoomFrameWidth))px")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 60, alignment: .trailing)
+                                Stepper("", value: $settings.zoomFrameWidth, in: 200...1920, step: 100)
+                                    .labelsHidden()
+                            }
+                        }
+
+                        LabeledContent("フレーム高さ") {
+                            HStack {
+                                Text("\(Int(settings.zoomFrameHeight))px")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 60, alignment: .trailing)
+                                Stepper("", value: $settings.zoomFrameHeight, in: 200...1080, step: 100)
+                                    .labelsHidden()
+                            }
                         }
                     }
 
@@ -235,6 +301,48 @@ struct ZoomSettingsView: View {
                 Toggle("カーソルを表示", isOn: $settings.showCursor)
             } header: {
                 Text("録画")
+            }
+
+            // 字幕
+            Section {
+                Toggle("自動字幕", isOn: $settings.subtitlesEnabled)
+
+                if settings.subtitlesEnabled {
+                    LabeledContent("フォントサイズ") {
+                        HStack {
+                            Text("\(Int(settings.subtitleFontSize))pt")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            Stepper("", value: $settings.subtitleFontSize, in: 16...48, step: 4)
+                                .labelsHidden()
+                        }
+                    }
+
+                    LabeledContent("表示位置") {
+                        Picker("", selection: $settings.subtitlePosition) {
+                            Text("下").tag(0)
+                            Text("上").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 80)
+                    }
+
+                    LabeledContent("表示時間") {
+                        HStack {
+                            Text(String(format: "%.1f秒", settings.subtitleDisplayDuration))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            Stepper("", value: $settings.subtitleDisplayDuration, in: 1.0...5.0, step: 0.5)
+                                .labelsHidden()
+                        }
+                    }
+                }
+            } header: {
+                Text("字幕")
+            } footer: {
+                Text("入力中のテキストを自動で字幕表示します")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // 高度な設定

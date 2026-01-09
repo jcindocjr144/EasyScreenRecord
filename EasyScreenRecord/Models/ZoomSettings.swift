@@ -3,7 +3,16 @@ import Combine
 
 /// Settings for zoom behavior during screen recording
 class ZoomSettings: ObservableObject {
-    // MARK: - Zoom Settings
+    // MARK: - Zoom Mode
+    /// Zoom mode: scale (倍率) or frameSize (フレームサイズ)
+    enum ZoomMode: Int {
+        case scale = 0       // Specify zoom by magnification (e.g., 2x)
+        case frameSize = 1   // Specify zoom by frame dimensions (e.g., 800x600)
+    }
+
+    @Published var zoomMode: ZoomMode = .scale
+
+    // MARK: - Zoom Settings (Scale Mode)
     /// Zoom magnification level (e.g., 2.0 = 2x zoom)
     @Published var zoomScale: CGFloat = 2.0
 
@@ -12,6 +21,13 @@ class ZoomSettings: ObservableObject {
 
     /// Maximum zoom scale
     @Published var maxZoomScale: CGFloat = 5.0
+
+    // MARK: - Zoom Settings (Frame Size Mode)
+    /// Frame width when zoomed (in pixels)
+    @Published var zoomFrameWidth: CGFloat = 800
+
+    /// Frame height when zoomed (in pixels)
+    @Published var zoomFrameHeight: CGFloat = 600
 
     /// How quickly the zoom level changes (0.01 = very slow, 0.2 = fast)
     @Published var scaleSmoothing: CGFloat = 0.05
@@ -80,11 +96,30 @@ class ZoomSettings: ObservableObject {
     /// Enable/disable smart zoom entirely
     @Published var smartZoomEnabled: Bool = true
 
+    // MARK: - Subtitle Settings
+    /// Enable/disable automatic subtitles for typed text
+    @Published var subtitlesEnabled: Bool = false
+
+    /// Subtitle font size
+    @Published var subtitleFontSize: CGFloat = 24
+
+    /// Subtitle position (0 = bottom, 1 = top)
+    @Published var subtitlePosition: Int = 0
+
+    /// Subtitle background opacity
+    @Published var subtitleBackgroundOpacity: CGFloat = 0.7
+
+    /// How long to show subtitle after typing stops (seconds)
+    @Published var subtitleDisplayDuration: TimeInterval = 2.0
+
     // MARK: - Reset
     func resetToDefaults() {
+        zoomMode = .scale
         zoomScale = 2.0
         minZoomScale = 1.5
         maxZoomScale = 5.0
+        zoomFrameWidth = 800
+        zoomFrameHeight = 600
         scaleSmoothing = 0.05
         positionSmoothing = 0.08
         edgeMarginRatio = 0.1
@@ -100,6 +135,11 @@ class ZoomSettings: ObservableObject {
         showCursor = true
         videoQuality = 0.8
         smartZoomEnabled = true
+        subtitlesEnabled = false
+        subtitleFontSize = 24
+        subtitlePosition = 0
+        subtitleBackgroundOpacity = 0.7
+        subtitleDisplayDuration = 2.0
         // outputDirectory is not reset (user preference)
     }
 
