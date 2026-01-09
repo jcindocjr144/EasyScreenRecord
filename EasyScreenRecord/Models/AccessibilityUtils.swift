@@ -18,6 +18,9 @@ class InputMonitor {
     private let maxBufferLength: Int = 100
     private var bufferClearTimer: Timer?
 
+    // Modifier key display settings
+    var showModifierKeys: Bool = true
+
     // Double-click detection
     private(set) var lastDoubleClickTime: Date = .distantPast
     private(set) var lastDoubleClickPosition: CGPoint = .zero
@@ -71,11 +74,17 @@ class InputMonitor {
                 if !InputMonitor.ignoredKeyCodes.contains(keyCode) {
                     let flags = event.flags
                     let hasCommandOrControl = flags.contains(.maskCommand) || flags.contains(.maskControl)
-                    if !hasCommandOrControl {
-                        monitor.lastKeyPressTime = Date()
-                        monitor.isTyping = true
 
-                        // Capture character for subtitle buffer
+                    // Always update typing state for non-modifier keys
+                    monitor.lastKeyPressTime = Date()
+                    monitor.isTyping = true
+
+                    // Capture character for subtitle buffer
+                    if hasCommandOrControl && monitor.showModifierKeys {
+                        // Show modifier + key combination (e.g., ⌘C)
+                        monitor.handleModifierKeyPress(keyCode: keyCode, flags: flags, event: event)
+                    } else if !hasCommandOrControl {
+                        // Normal typing without command/control
                         monitor.handleKeyPress(keyCode: keyCode, event: event)
                     }
                 }
@@ -227,6 +236,59 @@ class InputMonitor {
     }
 
     // MARK: - Text Buffer Methods
+
+    /// Build modifier key symbols string from event flags
+    private func getModifierSymbols(from flags: CGEventFlags) -> String {
+        var symbols = ""
+        // Order: Control, Option, Shift, Command (standard macOS order)
+        if flags.contains(.maskControl) { symbols += "⌃" }
+        if flags.contains(.maskAlternate) { symbols += "⌥" }
+        if flags.contains(.maskShift) { symbols += "⇧" }
+        if flags.contains(.maskCommand) { symbols += "⌘" }
+        return symbols
+    }
+
+    /// Handle key press with modifiers (e.g., ⌘C, ⌃⌥Delete)
+    private func handleModifierKeyPress(keyCode: Int, flags: CGEventFlags, event: CGEvent) {
+        let modifiers = getModifierSymbols(from: flags)
+        guard !modifiers.isEmpty else { return }
+
+        // Get key name for special keys or character for regular keys
+        let keyString: String
+        switch keyCode {
+        case kVK_Delete: keyString = "Delete"
+        case kVK_ForwardDelete: keyString = "⌦"
+        case kVK_Return, kVK_ANSI_KeypadEnter: keyString = "↩"
+        case kVK_Tab: keyString = "⇥"
+        case kVK_Space: keyString = "Space"
+        case kVK_Escape: keyString = "⎋"
+        case kVK_UpArrow: keyString = "↑"
+        case kVK_DownArrow: keyString = "↓"
+        case kVK_LeftArrow: keyString = "←"
+        case kVK_RightArrow: keyString = "→"
+        default:
+            // Get character from event
+            if let chars = getCharactersFromEvent(event), !chars.isEmpty {
+                keyString = chars.uppercased()
+            } else {
+                return
+            }
+        }
+
+        // Add space before shortcut if buffer is not empty
+        if !typedTextBuffer.isEmpty && !typedTextBuffer.hasSuffix(" ") {
+            typedTextBuffer += " "
+        }
+
+        typedTextBuffer += "[\(modifiers)\(keyString)]"
+
+        // Trim if too long
+        if typedTextBuffer.count > maxBufferLength {
+            typedTextBuffer = String(typedTextBuffer.suffix(maxBufferLength))
+        }
+
+        scheduleBufferClear()
+    }
 
     /// Handle key press and add character to buffer
     private func handleKeyPress(keyCode: Int, event: CGEvent) {

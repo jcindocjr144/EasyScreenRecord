@@ -349,11 +349,13 @@ struct ZoomSettingsView: View {
                                 .labelsHidden()
                         }
                     }
+
+                    Toggle("修飾キーを表示", isOn: $settings.showModifierKeys)
                 }
             } header: {
                 Text("字幕")
             } footer: {
-                Text("入力中のテキストを自動で字幕表示します")
+                Text("入力中のテキストを自動で字幕表示します。修飾キーを有効にすると [⌘C] のようにショートカットも表示されます。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

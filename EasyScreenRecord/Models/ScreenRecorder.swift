@@ -183,6 +183,7 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             try await newStream.startCapture()
 
             // Start keyboard monitoring for typing detection
+            KeyboardMonitor.shared.showModifierKeys = zoomSettings.showModifierKeys
             KeyboardMonitor.shared.startMonitoring()
 
             // Initialize dimming hole rect based on baseRegion or full screen

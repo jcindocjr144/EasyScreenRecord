@@ -110,6 +110,9 @@ class ZoomSettings: ObservableObject {
     /// Enable/disable automatic subtitles for typed text
     @Published var subtitlesEnabled: Bool = false
 
+    /// Show modifier keys in subtitles (e.g., ⌘+C, ⇧+⌘+Z)
+    @Published var showModifierKeys: Bool = true
+
     /// Subtitle font size
     @Published var subtitleFontSize: CGFloat = 24
 
@@ -149,6 +152,7 @@ class ZoomSettings: ObservableObject {
         zoomOnDoubleClick = false
         zoomOnTextSelection = false
         subtitlesEnabled = false
+        showModifierKeys = true
         subtitleFontSize = 24
         subtitlePosition = 0
         subtitleBackgroundOpacity = 0.7
