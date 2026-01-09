@@ -1,50 +1,59 @@
 # EasyScreenRecord
 
-macOS向けのスマートズーム機能付きスクリーンレコーダー。テキスト入力時に自動でカーソル周辺にズームインし、コーディング動画やチュートリアル作成に最適です。
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/macOS-14.0%2B-brightgreen" alt="macOS Version">
+  <img src="https://img.shields.io/github/v/release/nyanko3141592/EasyScreenRecord" alt="Release">
+  <img src="https://img.shields.io/github/license/nyanko3141592/EasyScreenRecord" alt="License">
+</p>
+
+<p align="center">
+  <strong>スマートズーム機能付き画面録画アプリ for macOS</strong>
+</p>
+
+<p align="center">
+  <a href="https://nyanko3141592.github.io/EasyScreenRecord/">🌐 ホームページ</a> •
+  <a href="https://github.com/nyanko3141592/EasyScreenRecord/releases/latest">📦 ダウンロード</a>
+</p>
+
+---
 
 ## 特徴
 
-- **Smart Zoom** - テキスト入力を検知して自動的にカーソル周辺にズームイン
-- **セーフゾーン** - 設定した範囲内ではカメラが追従せず、安定した映像を実現
-- **滑らかなアニメーション** - ズームイン/アウト、カメラ移動が滑らかに動作
-- **範囲選択録画** - ドラッグで録画範囲を自由に選択可能
-- **複数モニター対応** - マルチディスプレイ環境でも正しく動作
-- **メニューバーアプリ** - Dockに表示されず、メニューバーから操作
-
-## スクリーンショット
-
-（準備中）
-
-## 必要環境
-
-- macOS 13.0 (Ventura) 以降
-- 画面収録の権限
-- アクセシビリティの権限（テキスト入力検知用）
+- **🔍 スマートズーム** - タイピング、ダブルクリック、テキスト選択を検知して自動ズーム
+- **📝 自動字幕** - タイピング内容をリアルタイム表示（ターミナル・ブラウザ対応）
+- **🎯 範囲選択録画** - ドラッグで録画範囲を自由に選択
+- **🎨 フォーカス表示** - 録画範囲外をグレーアウト、ズーム領域に追従
+- **⚡ 軽量** - ネイティブSwiftUIアプリ、メニューバーから即座にアクセス
+- **🛠️ カスタマイズ** - ズーム倍率/フレームサイズ、スムージング等を細かく調整
 
 ## インストール
 
-1. [Releases](https://github.com/nyanko3141592/EasyScreenRecord/releases) からダウンロード
-2. アプリケーションフォルダに移動
-3. 初回起動時に画面収録とアクセシビリティの権限を許可
+### DMGからインストール（推奨）
+
+1. [最新リリース](https://github.com/nyanko3141592/EasyScreenRecord/releases/latest)からDMGをダウンロード
+2. DMGを開いて`EasyScreenRecord.app`をApplicationsにドラッグ
+3. `システム設定 → プライバシーとセキュリティ → アクセシビリティ`で許可
+4. 初回は右クリック→「開く」で起動（署名なしアプリのため）
 
 ### ソースからビルド
 
 ```bash
 git clone https://github.com/nyanko3141592/EasyScreenRecord.git
 cd EasyScreenRecord/EasyScreenRecord
-open EasyScreenRecord.xcodeproj
+./run.sh
 ```
-
-Xcode でビルド・実行してください。
 
 ## 使い方
 
 ### 基本操作
 
 1. メニューバーのアイコンをクリック
-2. 「Start Recording」または「Record Full Screen」を選択
-3. 範囲選択の場合はドラッグで範囲を指定し、「録画開始」ボタンまたはEnterキーで開始
-4. 録画を停止するには「Stop Recording」を選択
+2. 「Start Recording」で範囲選択画面を表示
+3. ドラッグで録画範囲を選択
+4. スマートズーム・字幕のオプションを設定
+5. 「録画開始」ボタンをクリック
+6. 録画停止はメニューバーから
 
 ### キーボードショートカット
 
@@ -53,34 +62,56 @@ Xcode でビルド・実行してください。
 | `⌘R` | 録画開始/停止 |
 | `⇧⌘F` | フルスクリーン録画開始 |
 | `⌘,` | 設定を開く |
-| `⌘Q` | 終了 |
 | `Enter` | 範囲選択を確定して録画開始 |
 | `ESC` | 範囲選択をキャンセル |
 
+### ズームトリガー
+
+スマートズームは以下のアクションで発動します（個別にON/OFF可能）:
+
+- **タイピング** - キーボード入力を検知
+- **ダブルクリック** - マウスのダブルクリックを検知
+- **テキスト選択** - テキストの選択操作を検知
+
 ### 設定項目
 
-#### 一般
-- **Smart Zoom** - テキスト入力時の自動ズーム ON/OFF
-- **ズーム倍率** - 1.5x 〜 5.0x
-- **プリセット** - 滑らか / 標準 / 高速
+| カテゴリ | 設定 | 説明 |
+|---------|------|------|
+| 一般 | Smart Zoom | 自動ズームのON/OFF |
+| | ズームモード | 倍率指定 or フレームサイズ指定 |
+| | プリセット | 滑らか / 標準 / 高速 |
+| 録画 | 保存先 | 録画ファイルの保存フォルダ |
+| | フレームレート | 30fps / 60fps |
+| | カーソル表示 | 録画にカーソルを含める |
+| 字幕 | 自動字幕 | タイピング内容を字幕表示 |
+| | フォントサイズ | 字幕の大きさ |
+| | 表示位置 | 上部 / 下部 |
 
-#### 録画
-- **保存先** - 録画ファイルの保存フォルダ（デフォルト: ムービー）
-- **フレームレート** - 30fps / 60fps
-- **カーソル表示** - 録画にカーソルを含めるかどうか
+## 動作環境
 
-#### 詳細設定
-- **セーフゾーン** - カメラが追従しない中央領域の割合
-- **ズーム維持時間** - 入力停止後にズームを維持する時間
-- **追従の滑らかさ** - カメラ移動のスムーズさ
-- **オーバーレイ表示** - 録画範囲の枠、セーフゾーン、暗転表示の ON/OFF
-- **ビデオ品質** - 出力ビデオのビットレート
+- macOS 14.0 (Sonoma) 以降
+- Apple Silicon / Intel Mac
+- 画面収録の権限
+- アクセシビリティの権限
 
 ## 技術仕様
 
 - **フレームワーク**: SwiftUI, ScreenCaptureKit, AVFoundation
 - **出力形式**: MOV (H.264)
 - **解像度**: Retina対応（2倍スケール）
+
+## 開発
+
+```bash
+# 開発用ビルド＆起動
+./run.sh
+
+# クリーンビルド
+./run.sh --clean
+
+# リリース用DMG作成
+./build-dmg.sh
+```
 
 ## ライセンス
 
