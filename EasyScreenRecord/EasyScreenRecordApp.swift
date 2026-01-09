@@ -187,6 +187,24 @@ struct MenuBarContentView: View {
                         Label("Zoom: \(Int(viewModel.recorder.zoomSettings.zoomFrameWidth))×\(Int(viewModel.recorder.zoomSettings.zoomFrameHeight))", systemImage: "arrow.up.left.and.arrow.down.right")
                     }
                 }
+
+                // Zoom Triggers submenu
+                Menu {
+                    Toggle("タイピング時", isOn: Binding(
+                        get: { viewModel.recorder.zoomSettings.zoomOnTyping },
+                        set: { viewModel.recorder.zoomSettings.zoomOnTyping = $0 }
+                    ))
+                    Toggle("ダブルクリック時", isOn: Binding(
+                        get: { viewModel.recorder.zoomSettings.zoomOnDoubleClick },
+                        set: { viewModel.recorder.zoomSettings.zoomOnDoubleClick = $0 }
+                    ))
+                    Toggle("テキスト選択時", isOn: Binding(
+                        get: { viewModel.recorder.zoomSettings.zoomOnTextSelection },
+                        set: { viewModel.recorder.zoomSettings.zoomOnTextSelection = $0 }
+                    ))
+                } label: {
+                    Label("ズームトリガー", systemImage: "cursorarrow.click")
+                }
             }
 
             Divider()

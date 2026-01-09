@@ -271,9 +271,22 @@ struct ZoomSettingsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 180)
                     }
+
+                    // Zoom Triggers
+                    Divider()
+
+                    Toggle("タイピング時", isOn: $settings.zoomOnTyping)
+                    Toggle("ダブルクリック時", isOn: $settings.zoomOnDoubleClick)
+                    Toggle("テキスト選択時", isOn: $settings.zoomOnTextSelection)
                 }
             } header: {
                 Text("一般")
+            } footer: {
+                if settings.smartZoomEnabled {
+                    Text("ズームするタイミングを選択できます")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             // 録画

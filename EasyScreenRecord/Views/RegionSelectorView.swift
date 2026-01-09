@@ -438,40 +438,96 @@ struct SelectionRectView: View {
                     HandleView(position: CGPoint(x: rect.maxX, y: rect.midY), isEdge: true)
                 }
 
-                // Toggles and Confirm button (inside the selection)
-                VStack(spacing: 12) {
-                    // Option toggles
-                    HStack(spacing: 16) {
-                        OptionToggleButton(
-                            icon: "plus.magnifyingglass",
-                            label: "Zoom",
-                            isOn: settings.smartZoomEnabled,
-                            action: { settings.smartZoomEnabled.toggle() }
-                        )
-                        OptionToggleButton(
-                            icon: "captions.bubble",
-                            label: "字幕",
-                            isOn: settings.subtitlesEnabled,
-                            action: { settings.subtitlesEnabled.toggle() }
-                        )
+                // Settings panel and Confirm button (inside the selection)
+                VStack(spacing: 16) {
+                    // Recording options panel
+                    VStack(spacing: 12) {
+                        // Smart Zoom section
+                        VStack(spacing: 8) {
+                            // Header with main toggle
+                            HStack {
+                                Image(systemName: "plus.magnifyingglass")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("スマートズーム")
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                Spacer()
+                                Toggle("", isOn: Binding(
+                                    get: { settings.smartZoomEnabled },
+                                    set: { settings.smartZoomEnabled = $0 }
+                                ))
+                                .toggleStyle(.switch)
+                                .scaleEffect(0.7)
+                                .labelsHidden()
+                            }
+
+                            // Zoom triggers (when enabled)
+                            if settings.smartZoomEnabled {
+                                HStack(spacing: 8) {
+                                    ZoomTriggerChip(
+                                        icon: "keyboard",
+                                        label: "タイピング",
+                                        isOn: settings.zoomOnTyping,
+                                        action: { settings.zoomOnTyping.toggle() }
+                                    )
+                                    ZoomTriggerChip(
+                                        icon: "cursorarrow.click.2",
+                                        label: "Wクリック",
+                                        isOn: settings.zoomOnDoubleClick,
+                                        action: { settings.zoomOnDoubleClick.toggle() }
+                                    )
+                                    ZoomTriggerChip(
+                                        icon: "text.cursor",
+                                        label: "選択",
+                                        isOn: settings.zoomOnTextSelection,
+                                        action: { settings.zoomOnTextSelection.toggle() }
+                                    )
+                                }
+                            }
+                        }
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Subtitle toggle
+                        HStack {
+                            Image(systemName: "captions.bubble")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("自動字幕")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { settings.subtitlesEnabled },
+                                set: { settings.subtitlesEnabled = $0 }
+                            ))
+                            .toggleStyle(.switch)
+                            .scaleEffect(0.7)
+                            .labelsHidden()
+                        }
                     }
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+                    )
+                    .frame(width: 280)
 
                     // Confirm button
                     Button(action: { controller.confirm() }) {
                         HStack(spacing: 8) {
                             Image(systemName: "video.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: 18))
                             Text("録画開始")
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
                         }
                         .foregroundColor(.white)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 24)
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 32)
                         .background(
                             LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing)
                         )
                         .clipShape(Capsule())
-                        .shadow(color: .red.opacity(0.5), radius: 10, y: 5)
+                        .shadow(color: .red.opacity(0.5), radius: 12, y: 6)
                     }
                     .buttonStyle(.plain)
                 }
@@ -532,8 +588,8 @@ struct InstructionBadge: View {
     }
 }
 
-// MARK: - Option Toggle Button
-struct OptionToggleButton: View {
+// MARK: - Zoom Trigger Chip
+struct ZoomTriggerChip: View {
     let icon: String
     let label: String
     let isOn: Bool
@@ -541,19 +597,23 @@ struct OptionToggleButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: 10))
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
             }
-            .foregroundColor(isOn ? .white : .white.opacity(0.7))
-            .padding(.vertical, 8)
-            .padding(.horizontal, 14)
-            .background(isOn ? Color.blue : Color.white.opacity(0.2))
-            .clipShape(Capsule())
+            .foregroundColor(isOn ? .white : .white.opacity(0.5))
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isOn ? Color.blue : Color.white.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(isOn ? Color.blue : Color.white.opacity(0.2), lineWidth: 1)
+                    )
+            )
         }
         .buttonStyle(.plain)
     }

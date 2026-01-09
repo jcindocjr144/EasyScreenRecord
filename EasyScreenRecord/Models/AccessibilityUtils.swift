@@ -2,14 +2,35 @@ import Foundation
 import AppKit
 import Carbon.HIToolbox
 
-/// Keyboard input monitor for detecting typing activity
-class KeyboardMonitor {
-    static let shared = KeyboardMonitor()
+/// Input monitor for detecting typing, double-click, and text selection
+class InputMonitor {
+    static let shared = InputMonitor()
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+
+    // Typing detection
     private(set) var lastKeyPressTime: Date = .distantPast
     private(set) var isTyping: Bool = false
+
+    // Typed text buffer for subtitles
+    private var typedTextBuffer: String = ""
+    private let maxBufferLength: Int = 100
+    private var bufferClearTimer: Timer?
+
+    // Double-click detection
+    private(set) var lastDoubleClickTime: Date = .distantPast
+    private(set) var lastDoubleClickPosition: CGPoint = .zero
+    private var lastClickTime: Date = .distantPast
+    private var lastClickPosition: CGPoint = .zero
+    private let doubleClickInterval: TimeInterval = 0.3
+    private let doubleClickRadius: CGFloat = 5.0
+
+    // Text selection detection
+    private(set) var lastTextSelectionTime: Date = .distantPast
+    private(set) var hasActiveSelection: Bool = false
+    private var lastSelectedText: String = ""
+    private var selectionCheckTimer: Timer?
 
     // Keys to ignore (modifiers, function keys, navigation)
     private static let ignoredKeyCodes: Set<Int> = [
@@ -28,41 +49,70 @@ class KeyboardMonitor {
     func startMonitoring() {
         guard eventTap == nil else { return }
 
-        // Create event tap to capture keyboard events
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        // Create event tap to capture keyboard and mouse events
+        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue) |
+                                      (1 << CGEventType.leftMouseDown.rawValue) |
+                                      (1 << CGEventType.leftMouseUp.rawValue)
 
-        // Use a static callback that can access the shared instance
         let callback: CGEventTapCallBack = { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
             // Handle tap disabled event
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                if let tap = KeyboardMonitor.shared.eventTap {
+                if let tap = InputMonitor.shared.eventTap {
                     CGEvent.tapEnable(tap: tap, enable: true)
                 }
                 return Unmanaged.passRetained(event)
             }
 
-            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+            let monitor = InputMonitor.shared
 
-            // Check if it's a typing key (not modifier/function/navigation)
-            if !KeyboardMonitor.ignoredKeyCodes.contains(Int(keyCode)) {
-                // Check modifier flags - ignore if Command or Control is held
-                let flags = event.flags
-                let hasCommandOrControl = flags.contains(.maskCommand) || flags.contains(.maskControl)
+            switch type {
+            case .keyDown:
+                let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+                if !InputMonitor.ignoredKeyCodes.contains(keyCode) {
+                    let flags = event.flags
+                    let hasCommandOrControl = flags.contains(.maskCommand) || flags.contains(.maskControl)
+                    if !hasCommandOrControl {
+                        monitor.lastKeyPressTime = Date()
+                        monitor.isTyping = true
 
-                if !hasCommandOrControl {
-                    KeyboardMonitor.shared.lastKeyPressTime = Date()
-                    KeyboardMonitor.shared.isTyping = true
+                        // Capture character for subtitle buffer
+                        monitor.handleKeyPress(keyCode: keyCode, event: event)
+                    }
+                }
 
+            case .leftMouseDown:
+                let now = Date()
+                let position = event.location
+
+                // Check for double-click
+                let timeSinceLastClick = now.timeIntervalSince(monitor.lastClickTime)
+                let distance = hypot(position.x - monitor.lastClickPosition.x,
+                                   position.y - monitor.lastClickPosition.y)
+
+                if timeSinceLastClick < monitor.doubleClickInterval && distance < monitor.doubleClickRadius {
+                    monitor.lastDoubleClickTime = now
+                    monitor.lastDoubleClickPosition = position
                     #if DEBUG
-                    print("[KeyboardMonitor] Key detected: \(keyCode)")
+                    print("[InputMonitor] Double-click detected at \(position)")
                     #endif
                 }
+
+                monitor.lastClickTime = now
+                monitor.lastClickPosition = position
+
+            case .leftMouseUp:
+                // Schedule text selection check after mouse up
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    monitor.checkTextSelection()
+                }
+
+            default:
+                break
             }
 
             return Unmanaged.passRetained(event)
         }
 
-        // Create the event tap (listen only, don't modify events)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -72,24 +122,20 @@ class KeyboardMonitor {
             userInfo: nil
         ) else {
             #if DEBUG
-            print("[KeyboardMonitor] Failed to create event tap. Check accessibility permissions.")
+            print("[InputMonitor] Failed to create event tap. Check accessibility permissions.")
             #endif
             return
         }
 
         eventTap = tap
-
-        // Create run loop source and add to current run loop
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         if let source = runLoopSource {
             CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         }
-
-        // Enable the tap
         CGEvent.tapEnable(tap: tap, enable: true)
 
         #if DEBUG
-        print("[KeyboardMonitor] Started monitoring keyboard events with CGEvent tap")
+        print("[InputMonitor] Started monitoring input events")
         #endif
     }
 
@@ -97,30 +143,165 @@ class KeyboardMonitor {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
-
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
             runLoopSource = nil
         }
-
         eventTap = nil
         isTyping = false
+        selectionCheckTimer?.invalidate()
+        selectionCheckTimer = nil
 
         #if DEBUG
-        print("[KeyboardMonitor] Stopped monitoring keyboard events")
+        print("[InputMonitor] Stopped monitoring input events")
         #endif
     }
 
-    /// Check if typing was detected within the given time interval
+    /// Check for text selection changes
+    private func checkTextSelection() {
+        guard let selectedText = getSelectedText(), !selectedText.isEmpty else {
+            if hasActiveSelection {
+                hasActiveSelection = false
+                lastSelectedText = ""
+            }
+            return
+        }
+
+        // New or changed selection
+        if selectedText != lastSelectedText {
+            lastSelectedText = selectedText
+            lastTextSelectionTime = Date()
+            hasActiveSelection = true
+            #if DEBUG
+            print("[InputMonitor] Text selection detected: \(selectedText.prefix(50))")
+            #endif
+        }
+    }
+
+    /// Get currently selected text using Accessibility API
+    private func getSelectedText() -> String? {
+        var focusedElement: CFTypeRef?
+        let systemWideElement = AXUIElementCreateSystemWide()
+        var result = AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+
+        if result != .success || focusedElement == nil {
+            if let app = NSWorkspace.shared.frontmostApplication {
+                let appElement = AXUIElementCreateApplication(app.processIdentifier)
+                result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+            }
+        }
+
+        guard result == .success, let element = focusedElement else { return nil }
+
+        var selectedTextValue: CFTypeRef?
+        let selectedResult = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedTextValue)
+
+        if selectedResult == .success, let text = selectedTextValue as? String {
+            return text
+        }
+        return nil
+    }
+
+    // MARK: - Query Methods
+
     func isTypingActive(within interval: TimeInterval) -> Bool {
         let timeSinceLastKey = Date().timeIntervalSince(lastKeyPressTime)
         let active = timeSinceLastKey < interval
-        if !active {
-            isTyping = false
-        }
+        if !active { isTyping = false }
         return active
     }
+
+    func isDoubleClickActive(within interval: TimeInterval) -> Bool {
+        return Date().timeIntervalSince(lastDoubleClickTime) < interval
+    }
+
+    func isTextSelectionActive(within interval: TimeInterval) -> Bool {
+        return hasActiveSelection && Date().timeIntervalSince(lastTextSelectionTime) < interval
+    }
+
+    func getDoubleClickPosition() -> CGPoint? {
+        if isDoubleClickActive(within: 2.0) {
+            return lastDoubleClickPosition
+        }
+        return nil
+    }
+
+    // MARK: - Text Buffer Methods
+
+    /// Handle key press and add character to buffer
+    private func handleKeyPress(keyCode: Int, event: CGEvent) {
+        // Handle special keys
+        switch keyCode {
+        case kVK_Delete: // Backspace
+            if !typedTextBuffer.isEmpty {
+                typedTextBuffer.removeLast()
+            }
+            return
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            // Clear buffer on Enter (new line)
+            typedTextBuffer = ""
+            return
+        case kVK_Tab:
+            typedTextBuffer += " "
+            return
+        case kVK_Space:
+            typedTextBuffer += " "
+            scheduleBufferClear()
+            return
+        default:
+            break
+        }
+
+        // Get the character from the event
+        if let characters = getCharactersFromEvent(event) {
+            typedTextBuffer += characters
+
+            // Trim if too long
+            if typedTextBuffer.count > maxBufferLength {
+                typedTextBuffer = String(typedTextBuffer.suffix(maxBufferLength))
+            }
+
+            scheduleBufferClear()
+        }
+    }
+
+    /// Get characters from CGEvent
+    private func getCharactersFromEvent(_ event: CGEvent) -> String? {
+        var length: Int = 0
+        event.keyboardGetUnicodeString(maxStringLength: 0, actualStringLength: &length, unicodeString: nil)
+
+        guard length > 0 else { return nil }
+
+        var chars = [UniChar](repeating: 0, count: length)
+        event.keyboardGetUnicodeString(maxStringLength: length, actualStringLength: &length, unicodeString: &chars)
+
+        return String(utf16CodeUnits: chars, count: length)
+    }
+
+    /// Schedule buffer clear after inactivity
+    private func scheduleBufferClear() {
+        bufferClearTimer?.invalidate()
+        bufferClearTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            self?.typedTextBuffer = ""
+        }
+    }
+
+    /// Get the current typed text buffer
+    func getTypedBuffer() -> String? {
+        guard isTypingActive(within: 3.0), !typedTextBuffer.isEmpty else {
+            return nil
+        }
+        return typedTextBuffer
+    }
+
+    /// Clear the typed text buffer
+    func clearTypedBuffer() {
+        typedTextBuffer = ""
+    }
 }
+
+// MARK: - Legacy compatibility
+typealias KeyboardMonitor = InputMonitor
 
 struct AccessibilityUtils {
 
@@ -378,12 +559,18 @@ struct AccessibilityUtils {
     }
 
     /// Get the currently typed/selected text from the focused element
+    /// Returns (text, isTypingActive) tuple
     static func getTypedText() -> String? {
-        // Only try to get text if typing was recently detected
-        guard KeyboardMonitor.shared.isTypingActive(within: 1.0) else {
+        // Check typing with longer window for subtitle display
+        guard KeyboardMonitor.shared.isTypingActive(within: 3.0) else {
             return nil
         }
 
+        return getTextFromFocusedElement()
+    }
+
+    /// Get text from focused element without typing check (for subtitle refresh)
+    static func getTextFromFocusedElement() -> String? {
         var focusedElement: CFTypeRef?
 
         // Get focused element from system-wide

@@ -96,6 +96,16 @@ class ZoomSettings: ObservableObject {
     /// Enable/disable smart zoom entirely
     @Published var smartZoomEnabled: Bool = true
 
+    // MARK: - Zoom Triggers
+    /// Zoom on keyboard input (typing)
+    @Published var zoomOnTyping: Bool = true
+
+    /// Zoom on double-click
+    @Published var zoomOnDoubleClick: Bool = false
+
+    /// Zoom on text selection
+    @Published var zoomOnTextSelection: Bool = false
+
     // MARK: - Subtitle Settings
     /// Enable/disable automatic subtitles for typed text
     @Published var subtitlesEnabled: Bool = false
@@ -135,6 +145,9 @@ class ZoomSettings: ObservableObject {
         showCursor = true
         videoQuality = 0.8
         smartZoomEnabled = true
+        zoomOnTyping = true
+        zoomOnDoubleClick = false
+        zoomOnTextSelection = false
         subtitlesEnabled = false
         subtitleFontSize = 24
         subtitlePosition = 0

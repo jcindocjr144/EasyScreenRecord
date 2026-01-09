@@ -443,13 +443,20 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
     private func setupSubtitleWindow() {
         let targetScreen = getTargetScreen()
 
-        // Create subtitle window - this one IS captured in recording
-        // Use .normal level (not .floating) so it gets captured by ScreenCaptureKit
+        // Use baseRegion if set, otherwise use full screen
+        let regionFrame: CGRect
+        if let region = baseRegion {
+            regionFrame = region
+        } else {
+            regionFrame = targetScreen.frame
+        }
+
+        // Create subtitle window - visible above dimming, within recording region
         let window = NSWindow(
-            contentRect: CGRect(x: targetScreen.frame.origin.x,
-                              y: targetScreen.frame.origin.y,
-                              width: targetScreen.frame.width,
-                              height: 100),
+            contentRect: CGRect(x: regionFrame.origin.x,
+                              y: regionFrame.origin.y,
+                              width: regionFrame.width,
+                              height: 80),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -457,11 +464,10 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         window.backgroundColor = .clear
         window.isOpaque = false
         window.ignoresMouseEvents = true
-        // Use .normal level so it gets captured in recording (not excluded like .floating)
-        window.level = .normal
+        // Use .floating level to appear above dimming window
+        window.level = .floating
         window.isReleasedWhenClosed = false
-        // Don't use canJoinAllSpaces to ensure it's treated as a regular window
-        window.collectionBehavior = [.stationary, .ignoresCycle]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let viewModel = SubtitleViewModel()
         viewModel.fontSize = zoomSettings.subtitleFontSize
@@ -477,20 +483,30 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
         guard let window = subtitleWindow else { return }
         let targetScreen = getTargetScreen()
 
-        // Position at bottom or top of screen based on setting
-        let yPosition: CGFloat
-        if zoomSettings.subtitlePosition == 0 {
-            // Bottom
-            yPosition = targetScreen.frame.origin.y + 50
+        // Use baseRegion if set, otherwise use full screen
+        let regionFrame: CGRect
+        if let region = baseRegion {
+            regionFrame = region
         } else {
-            // Top
-            yPosition = targetScreen.frame.origin.y + targetScreen.frame.height - 150
+            regionFrame = targetScreen.frame
         }
 
-        window.setFrame(CGRect(x: targetScreen.frame.origin.x,
+        // Position at bottom or top of recording region
+        let subtitleHeight: CGFloat = 80
+        let margin: CGFloat = 20
+        let yPosition: CGFloat
+        if zoomSettings.subtitlePosition == 0 {
+            // Bottom of recording region
+            yPosition = regionFrame.origin.y + margin
+        } else {
+            // Top of recording region
+            yPosition = regionFrame.origin.y + regionFrame.height - subtitleHeight - margin
+        }
+
+        window.setFrame(CGRect(x: regionFrame.origin.x,
                                y: yPosition,
-                               width: targetScreen.frame.width,
-                               height: 100), display: true)
+                               width: regionFrame.width,
+                               height: subtitleHeight), display: true)
     }
 
     private func cleanupWindows() {
@@ -575,8 +591,6 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             return
         }
 
-        let typingPosition = AccessibilityUtils.getTypingCursorPosition()
-
         // Calculate default center position (in display-local top-left origin coordinates)
         let defaultCenter: CGPoint
         if let region = baseRegion {
@@ -589,29 +603,19 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
             defaultCenter = CGPoint(x: displaySize.width / 2, y: displaySize.height / 2)
         }
 
-        // Determine if typing is detected and within region
-        var newTypingDetected = false
-        var detectedPosition: CGPoint? = nil
-
-        if let typingPos = typingPosition {
+        // Helper function to check if a position is within recording region
+        func isPositionInRegion(_ globalPos: CGPoint) -> (isInRegion: Bool, localPos: CGPoint) {
             // Convert global coordinates to display-local coordinates
-            let localTypingPos = CGPoint(
-                x: typingPos.x - displayOrigin.x,
-                y: typingPos.y - displayOrigin.y
+            let localPos = CGPoint(
+                x: globalPos.x - displayOrigin.x,
+                y: globalPos.y - displayOrigin.y
             )
 
-            #if DEBUG
-            if now.timeIntervalSince(lastLogTime) > 1.0 {
-                print("[Zoom] global: \(typingPos), local: \(localTypingPos), displayOrigin: \(displayOrigin), displaySize: \(displaySize)")
-                lastLogTime = now
-            }
-            #endif
-
-            // Check if typing position is within display bounds
+            // Check if within display bounds
             let displayBounds = CGRect(origin: .zero, size: displaySize)
-            let isInDisplay = displayBounds.contains(localTypingPos)
+            let isInDisplay = displayBounds.contains(localPos)
 
-            // Also check if within baseRegion (if set)
+            // Check if within baseRegion (if set)
             let isInRegion: Bool
             if let region = baseRegion {
                 // baseRegion is in NSWindow coordinates (bottom-left origin)
@@ -622,28 +626,78 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
                     width: region.width,
                     height: region.height
                 )
-                isInRegion = regionTopLeft.contains(localTypingPos)
+                isInRegion = regionTopLeft.contains(localPos)
             } else {
                 isInRegion = isInDisplay
             }
 
-            if isInRegion {
-                newTypingDetected = true
-                detectedPosition = localTypingPos  // Use local coordinates
+            return (isInRegion, localPos)
+        }
+
+        // Determine if any zoom trigger is active
+        var newZoomTriggerDetected = false
+        var detectedPosition: CGPoint? = nil
+        var triggerSource: String = ""
+
+        // 1. Check typing trigger
+        if settings.zoomOnTyping {
+            if let typingPos = AccessibilityUtils.getTypingCursorPosition() {
+                let (isInRegion, localPos) = isPositionInRegion(typingPos)
+                if isInRegion {
+                    newZoomTriggerDetected = true
+                    detectedPosition = localPos
+                    triggerSource = "typing"
+                }
             }
         }
 
-        // Update typing detection timestamp
-        if newTypingDetected {
+        // 2. Check double-click trigger (only if not already triggered)
+        if !newZoomTriggerDetected && settings.zoomOnDoubleClick {
+            if InputMonitor.shared.isDoubleClickActive(within: settings.zoomHoldDuration) {
+                if let doubleClickPos = InputMonitor.shared.getDoubleClickPosition() {
+                    let (isInRegion, localPos) = isPositionInRegion(doubleClickPos)
+                    if isInRegion {
+                        newZoomTriggerDetected = true
+                        detectedPosition = localPos
+                        triggerSource = "doubleClick"
+                    }
+                }
+            }
+        }
+
+        // 3. Check text selection trigger (only if not already triggered)
+        if !newZoomTriggerDetected && settings.zoomOnTextSelection {
+            if InputMonitor.shared.isTextSelectionActive(within: settings.zoomHoldDuration) {
+                // Use focused element position for text selection
+                if let selectionPos = AccessibilityUtils.getFocusedElementPosition() {
+                    let (isInRegion, localPos) = isPositionInRegion(selectionPos)
+                    if isInRegion {
+                        newZoomTriggerDetected = true
+                        detectedPosition = localPos
+                        triggerSource = "textSelection"
+                    }
+                }
+            }
+        }
+
+        #if DEBUG
+        if newZoomTriggerDetected && now.timeIntervalSince(lastLogTime) > 1.0 {
+            print("[Zoom] Trigger: \(triggerSource), position: \(detectedPosition ?? .zero)")
+            lastLogTime = now
+        }
+        #endif
+
+        // Update zoom trigger detection timestamp
+        if newZoomTriggerDetected {
             lastTypingDetectedTime = now
         }
 
         // Determine if zoom should be active (with hold duration)
-        let timeSinceLastTyping = now.timeIntervalSince(lastTypingDetectedTime)
-        let shouldZoom = newTypingDetected || (timeSinceLastTyping < settings.zoomHoldDuration && isZoomActive)
+        let timeSinceLastTrigger = now.timeIntervalSince(lastTypingDetectedTime)
+        let shouldZoom = newZoomTriggerDetected || (timeSinceLastTrigger < settings.zoomHoldDuration && isZoomActive)
 
         // Update zoom active state
-        if newTypingDetected && !isZoomActive {
+        if newZoomTriggerDetected && !isZoomActive {
             // Starting zoom - lock to current position
             isZoomActive = true
             if let pos = detectedPosition {
@@ -850,25 +904,52 @@ class ScreenRecorder: NSObject, ObservableObject, SCStreamOutput {
 
         // Update subtitles if enabled
         if settings.subtitlesEnabled, let viewModel = subtitleViewModel {
-            // Get typed text from accessibility API
-            if let typedText = AccessibilityUtils.getTypedText() {
+            // Get typed text from key buffer (works in all apps)
+            if let typedText = InputMonitor.shared.getTypedBuffer() {
+                // Update text if changed
                 if typedText != lastSubtitleText {
                     lastSubtitleText = typedText
-                    lastSubtitleUpdateTime = now
                     viewModel.text = typedText
-                    viewModel.isVisible = true
                 }
+                // Keep visible and update time while typing
+                lastSubtitleUpdateTime = now
+                viewModel.isVisible = true
             }
 
             // Hide subtitle after display duration of no typing
             let timeSinceLastUpdate = now.timeIntervalSince(lastSubtitleUpdateTime)
             if timeSinceLastUpdate > settings.subtitleDisplayDuration && viewModel.isVisible {
                 viewModel.isVisible = false
+                lastSubtitleText = ""
+                InputMonitor.shared.clearTypedBuffer()
             }
 
             // Update view model settings
             viewModel.fontSize = settings.subtitleFontSize
             viewModel.backgroundOpacity = settings.subtitleBackgroundOpacity
+
+            // Update subtitle window position to follow zoom area
+            if let window = subtitleWindow {
+                let subtitleHeight: CGFloat = 80
+                let margin: CGFloat = 10
+
+                // Use current zoom area for positioning
+                let subtitleY: CGFloat
+                if settings.subtitlePosition == 0 {
+                    // Bottom of zoom area
+                    subtitleY = screenOrigin.y + screenHeight - sourceY - activeZoomHeight + margin
+                } else {
+                    // Top of zoom area
+                    subtitleY = screenOrigin.y + screenHeight - sourceY - subtitleHeight - margin
+                }
+
+                window.setFrame(CGRect(
+                    x: screenOrigin.x + sourceX,
+                    y: subtitleY,
+                    width: activeZoomWidth,
+                    height: subtitleHeight
+                ), display: false)
+            }
         }
     }
 
