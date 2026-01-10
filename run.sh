@@ -2,8 +2,9 @@
 
 # EasyScreenRecord - Build and Run Script
 
-PROJECT_DIR="/Users/takahashinaoki/Dev/Hobby/EasyScreenRecord/EasyScreenRecord"
-APP_PATH="/Users/takahashinaoki/Library/Developer/Xcode/DerivedData/EasyScreenRecord-fkakfsnxmyskmefpvewziicawekc/Build/Products/Debug/EasyScreenRecord.app"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
 
 # Kill existing process
 pkill -x EasyScreenRecord 2>/dev/null
@@ -49,6 +50,12 @@ if $BUILD; then
     echo "✅ Build succeeded"
 fi
 
-# Run
+# Find and run the built app
+APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "EasyScreenRecord.app" -path "*/Debug/*" -type d 2>/dev/null | head -1)
+if [ -z "$APP_PATH" ]; then
+    echo "❌ Could not find built app"
+    exit 1
+fi
+
 echo "🚀 Starting app..."
 open "$APP_PATH"
